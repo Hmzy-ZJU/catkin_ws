@@ -1,0 +1,49 @@
+enh_01.sh  
+//uwfusion.scb_percent（简单颜色平衡裁剪百分比){0.2, 0.4，0.6, 0.8， 1.0}
+//0.6
+
+enh_02.sh  
+//uwfusion.clahe_clip（CLAHE 限制对比度因子）：{1.0,1.2 ,1.4,1.6,1.8 ,2.0}
+//1.4
+
+
+enh_03.sh  
+//uwfusion.bilateral_sigma_color：{2.0, 3.0，4.0, 5.0，6.0， 8.0}
+//4.0
+
+enh_04.sh 
+//uwfusion.bilateral_sigma_space:{2.0, 2.5，3.0，3.5, 4.0，5.0} 
+//3.5
+
+enh_05.sh 
+//uwfusion.exposed_avg:{0.3，0.4, 0.5, 0.6，0.7}
+//0.5
+
+enh_06.sh 
+//uwfusion.exposed_sigma:{0.15，0.20, 0.25, 0.30，0.35} 
+//0.25
+
+enh_07.sh
+//uwfusion.levels: {2,3, 4, 5}
+//4
+
+
+point_01.sh
+//InfoSelector.TopK: 40,60,80,100,120,150,180,200,220,250
+
+point_02.sh
+//InfoSelector.TopK: 
+  "harbor_topk_50"
+  "harbor_topk_70"
+  "harbor_topk_90"
+  "harbor_topk_110"
+  "harbor_topk_130"
+  "harbor_topk_140"
+  "harbor_topk_160"
+  
+point_03.sh
+//InfoSelector.TopK: 
+  "harbor_topk_65"
+  "harbor_topk_75"
+  "harbor_topk_85"
+  "harbor_topk_95"
