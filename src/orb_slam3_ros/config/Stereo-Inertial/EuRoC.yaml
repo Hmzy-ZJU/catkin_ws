@@ -111,3 +111,33 @@ Viewer.ViewpointY: -1.7
 Viewer.ViewpointZ: 0.8
 Viewer.ViewpointF: -500.0
 Viewer.imageViewScale: 1.0
+
+# Information-driven point selection and keyframe decision
+InfoSelector.Enable: 1
+InfoSelector.TopK: 95
+InfoSelector.UseUniform: 1
+InfoSelector.w_uniform: 0.12
+InfoSelector.MinPxDist: 7
+InfoSelector.LambdaInit: 1.0e-3
+InfoKF.Use: 1
+InfoKF.AllowBitsDrop: 1.8
+InfoKF.LambdaMean: 1.0e-3
+InfoKF.Dyn.Alpha: 0.25
+InfoKF.Dyn.Beta: 0.0
+InfoKF.Dyn.TauMin: 0.1
+InfoKF.Dyn.TauMax: 5.0
+InfoKF.Cum.Decay: 0.95
+InfoKF.Cum.Thr: 0.5
+InfoKF.MaxFramesForce: 300
+
+# Adaptive IDVO. In inertial modes it starts after IMU initialization.
+EnableAdaptiveIDVO: 0
+AdaptivePolicyType: "Fixed"
+MinKappaTop: 60
+MaxKappaTop: 180
+MinTau0: 0.1
+MaxTau0: 5.0
+TrackingTimeBudget: 30.0
+SmoothFactor: 0.8
+EnableAdaptiveLogging: 0
+AdaptiveLogPath: "adaptive_idvo_stereo_inertial_euroc.csv"

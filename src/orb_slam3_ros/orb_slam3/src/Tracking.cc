@@ -28,6 +28,9 @@
 #include "KannalaBrandt8.h"
 #include "MLPnPsolver.h"
 #include "GeometricTools.h"
+#ifdef ORB3_USE_INFOSEL
+#include "ORBAdaptiveStateCollector.h"
+#endif
 
 #include <chrono>
 #include <fstream>
@@ -355,6 +358,32 @@ void Tracking::ResetRuntimeStats(){
 void Tracking::RegisterEnhanceTime(double ms)
 {
     mRtStats.enh_ms.push_back(ms);
+}
+
+void Tracking::LogAdaptiveFrame(double track_ms)
+{
+#ifdef ORB3_USE_INFOSEL
+    mAdaptiveLastTrackTimeMs = track_ms;
+    if(!(mAdaptiveConfig.enable_logging || mAdaptiveConfig.enable_adaptive_idvo))
+        return;
+
+    if(!mAdaptiveStateValid)
+    {
+        mAdaptiveLastState.frame_id = mCurrentFrame.mnId;
+        mAdaptiveLastState.timestamp = mCurrentFrame.mTimeStamp;
+    }
+
+    mAdaptiveLastState.tracking_time_ms = track_ms;
+    mAdaptiveLastState.recent_local_ba_time_ms = mRtStats.ba_ms.empty() ? 0.0 : mRtStats.ba_ms.back();
+    mAdaptiveLastState.number_of_keyframes = mpAtlas ? static_cast<int>(mpAtlas->KeyFramesInMap()) : 0;
+    mAdaptiveLastState.number_of_map_points = mpAtlas ? static_cast<int>(mpAtlas->MapPointsInMap()) : 0;
+    mAdaptiveLastState.keyframe_interval = static_cast<int>(mCurrentFrame.mnId - mnLastKeyFrameId);
+
+    const bool trackingLost = (mState == LOST || mState == RECENTLY_LOST);
+    mAdaptiveLogger.Log(mAdaptiveLastState, mAdaptiveCurrentParams, mAdaptiveKeyFrameInserted, trackingLost);
+#else
+    (void)track_ms;
+#endif
 }
 
 void Tracking::SaveRuntimeStatsCSV(const std::string& filepath)
@@ -1997,6 +2026,10 @@ void Tracking::Track()
 
     // === [开始计时] ===
     auto t_start = std::chrono::steady_clock::now();
+#ifdef ORB3_USE_INFOSEL
+    mAdaptiveKeyFrameInserted = false;
+    mAdaptiveStateValid = false;
+#endif
 
     if(mpLocalMapper->mbBadImu)
     {
@@ -2493,7 +2526,16 @@ void Tracking::Track()
             // if(bNeedKF && bOK)
             if(bNeedKF && (bOK || (mInsertKFsLost && mState==RECENTLY_LOST &&
                                    (mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD))))
+            {
+#ifdef ORB3_USE_INFOSEL
+                const long unsigned int kfsBeforeAdaptive = mpAtlas ? mpAtlas->KeyFramesInMap() : 0;
+#endif
                 CreateNewKeyFrame();
+#ifdef ORB3_USE_INFOSEL
+                const long unsigned int kfsAfterAdaptive = mpAtlas ? mpAtlas->KeyFramesInMap() : kfsBeforeAdaptive;
+                mAdaptiveKeyFrameInserted = (kfsAfterAdaptive > kfsBeforeAdaptive);
+#endif
+            }
 
 #ifdef REGISTER_TIMES
             std::chrono::steady_clock::time_point time_EndNewKF = std::chrono::steady_clock::now();
@@ -3288,12 +3330,9 @@ bool Tracking::TrackLocalMap()
     // === Unified Info-based selection over *all* current matches ===
     // 时机：SearchLocalPoints() 之后，此时 mvpMapPoints 已包含 “旧匹配 + 局部投影新增匹配”
     // 触发条件：使用 InfoSelector 且 当前帧有位姿 且 跟踪状态为 OK
-    // Keep information-driven match pruning disabled during inertial bootstrap.
-    // After IMU initialization, it is re-enabled automatically.
+    // Visual modes are ready immediately; inertial modes wait for IMU bootstrap.
     if (mUseInfoSelector && mCurrentFrame.HasPose() && mState == OK &&
-        mpAtlas->GetCurrentMap() &&
-        mpAtlas->GetCurrentMap()->isImuInitialized() &&
-        mpAtlas->GetCurrentMap()->GetIniertialBA2())
+        IsInfoModuleRuntimeReady())
     {
         // --------- [稳健性] 每帧先清空，避免上一帧残留导致可视化“闪烁/假象” ---------
         mCurrentFrame.mvInfoSelected.assign(mCurrentFrame.N, false);
@@ -3331,13 +3370,47 @@ bool Tracking::TrackLocalMap()
 
         if (nBefore > 0)
         {
+            InfoSelectParams frameInfoSelParams = GetCurrentInfoSelectParams();
+            if(mAdaptiveConfig.enable_adaptive_idvo &&
+               mAdaptiveConfig.policy_type == AdaptivePolicyType::RuleBased)
+            {
+                std::vector<int> candIndices;
+                candIndices.reserve(cand.size());
+                for(const auto& mi : cand)
+                    candIndices.push_back(mi.idx);
+
+                const double recentBA = mRtStats.ba_ms.empty() ? 0.0 : mRtStats.ba_ms.back();
+                const int nKFsAdaptive = mpAtlas ? static_cast<int>(mpAtlas->KeyFramesInMap()) : 0;
+                const int nMPsAdaptive = mpAtlas ? static_cast<int>(mpAtlas->MapPointsInMap()) : 0;
+                const int kfIntervalAdaptive = static_cast<int>(mCurrentFrame.mnId - mnLastKeyFrameId);
+
+                AdaptiveState preState = ORBAdaptiveStateCollector::Collect(
+                    mCurrentFrame,
+                    mImGray,
+                    candIndices,
+                    nBefore,
+                    0,
+                    mnMatchesInliers,
+                    mInfoKFState.H_ref,
+                    mInfoKFState.initialized,
+                    mInfoKFState.cumDrop,
+                    mInfoKFParams.lambdaMean,
+                    mAdaptiveLastTrackTimeMs,
+                    recentBA,
+                    nKFsAdaptive,
+                    nMPsAdaptive,
+                    kfIntervalAdaptive);
+                UpdateAdaptiveParamsFromState(preState);
+                frameInfoSelParams = GetCurrentInfoSelectParams();
+            }
+
             // 选择（InfoGain）
             std::vector<int> selected =
-                InfoGain::SelectByInformationGain(mCurrentFrame, cand, mInfoSelParams);
+                InfoGain::SelectByInformationGain(mCurrentFrame, cand, frameInfoSelParams);
 
             // --- 稳健下限（可选）---
             // 若过小，保底留一批（避免优化退化/发散）
-            const int minKeep = std::min(std::max(20, mInfoSelParams.topK / 2), nBefore);
+            const int minKeep = std::min(std::max(20, frameInfoSelParams.topK / 2), nBefore);
             if ((int)selected.size() < minKeep)
             {
                 // 简单补齐：从 cand 前面顺序补（或可按响应 score 再挑）
@@ -3373,12 +3446,30 @@ bool Tracking::TrackLocalMap()
                       << " selected(after): " << selected.size()
                       << " ratio: " << std::fixed << std::setprecision(2)
                       << (100.0 * selected.size() / std::max(1, nBefore)) << "%\n";
+
+            if(mAdaptiveConfig.enable_logging || mAdaptiveConfig.enable_adaptive_idvo)
+            {
+                mAdaptiveLastState.candidate_point_number = nBefore;
+                mAdaptiveLastState.selected_point_number = static_cast<int>(selected.size());
+                mAdaptiveLastState.selection_ratio =
+                    static_cast<double>(selected.size()) / static_cast<double>(std::max(1, nBefore));
+                mAdaptiveStateValid = true;
+            }
         }
         else
         {
             // nBefore == 0：本帧没有候选，已在开头清空了 selected/candidate 标记
             std::cout << "[InfoSel] (UNIFIED) Frame " << mCurrentFrame.mnId
                       << " candidates(before): 0 selected(after): 0 ratio: 0.00%\n";
+            if(mAdaptiveConfig.enable_logging || mAdaptiveConfig.enable_adaptive_idvo)
+            {
+                mAdaptiveLastState.frame_id = mCurrentFrame.mnId;
+                mAdaptiveLastState.timestamp = mCurrentFrame.mTimeStamp;
+                mAdaptiveLastState.candidate_point_number = 0;
+                mAdaptiveLastState.selected_point_number = 0;
+                mAdaptiveLastState.selection_ratio = 0.0;
+                mAdaptiveStateValid = true;
+            }
         }
     }
 #endif
@@ -3464,6 +3555,51 @@ bool Tracking::TrackLocalMap()
     mpLocalMapper->mnMatchesInliers=mnMatchesInliers;
     // ✅ 新增：记录当前帧的有效匹配点数量（即选点数）
     mRtStats.selected_pts.push_back(mnMatchesInliers);
+#ifdef ORB3_USE_INFOSEL
+    if(mAdaptiveConfig.enable_logging || mAdaptiveConfig.enable_adaptive_idvo)
+    {
+        std::vector<int> validIndices;
+        validIndices.reserve(mCurrentFrame.N);
+        int candidateCount = 0;
+        int selectedCount = 0;
+        for(int i = 0; i < mCurrentFrame.N; ++i)
+        {
+            if(i < static_cast<int>(mCurrentFrame.mvInfoCandidate.size()) && mCurrentFrame.mvInfoCandidate[i])
+                ++candidateCount;
+            if(i < static_cast<int>(mCurrentFrame.mvInfoSelected.size()) && mCurrentFrame.mvInfoSelected[i])
+                ++selectedCount;
+            if(mCurrentFrame.mvpMapPoints[i] && !mCurrentFrame.mvpMapPoints[i]->isBad() && !mCurrentFrame.mvbOutlier[i])
+                validIndices.push_back(i);
+        }
+        if(candidateCount == 0)
+            candidateCount = static_cast<int>(validIndices.size());
+        if(selectedCount == 0)
+            selectedCount = static_cast<int>(validIndices.size());
+
+        const double recentBA = mRtStats.ba_ms.empty() ? 0.0 : mRtStats.ba_ms.back();
+        const int nKFsAdaptive = mpAtlas ? static_cast<int>(mpAtlas->KeyFramesInMap()) : 0;
+        const int nMPsAdaptive = mpAtlas ? static_cast<int>(mpAtlas->MapPointsInMap()) : 0;
+        const int kfIntervalAdaptive = static_cast<int>(mCurrentFrame.mnId - mnLastKeyFrameId);
+
+        mAdaptiveLastState = ORBAdaptiveStateCollector::Collect(
+            mCurrentFrame,
+            mImGray,
+            validIndices,
+            candidateCount,
+            selectedCount,
+            mnMatchesInliers,
+            mInfoKFState.H_ref,
+            mInfoKFState.initialized,
+            mInfoKFState.cumDrop,
+            mInfoKFParams.lambdaMean,
+            mAdaptiveLastTrackTimeMs,
+            recentBA,
+            nKFsAdaptive,
+            nMPsAdaptive,
+            kfIntervalAdaptive);
+        mAdaptiveStateValid = true;
+    }
+#endif
     std::cout << "[TrackLocalMap] Frame " << mCurrentFrame.mnId
             << " 有效匹配点数: " << mnMatchesInliers << std::endl;
 
@@ -3643,10 +3779,15 @@ bool Tracking::NeedNewKeyFrame()
         // Otherwise send a signal to interrupt BA
         #ifdef ORB3_USE_INFOSEL
         // === 信息门控：若启用，在批准新KF之前计算当前帧 Fisher 信息 ===
-        if(mInfoKFParams.use && mCurrentFrame.HasPose() &&
-           mpAtlas->GetCurrentMap() &&
-           mpAtlas->GetCurrentMap()->isImuInitialized() &&
-           mpAtlas->GetCurrentMap()->GetIniertialBA2())
+        if(mAdaptiveConfig.enable_adaptive_idvo &&
+           mAdaptiveConfig.policy_type == AdaptivePolicyType::RuleBased &&
+           mAdaptiveStateValid)
+        {
+            UpdateAdaptiveParamsFromState(mAdaptiveLastState);
+        }
+        InfoKFParams frameInfoKFParams = GetCurrentInfoKFParams();
+        if(frameInfoKFParams.use && mCurrentFrame.HasPose() &&
+           IsInfoModuleRuntimeReady())
         {
             std::vector<int> validIndices;
             validIndices.reserve(mCurrentFrame.N);
@@ -3666,12 +3807,12 @@ bool Tracking::NeedNewKeyFrame()
                         ++n_matches_curr;
 
                 Eigen::Matrix<double,6,6> H_curr =
-                    InfoGain::ComputePoseInformation(mCurrentFrame, validIndices, mInfoKFParams.lambdaMean);
+                    InfoGain::ComputePoseInformation(mCurrentFrame, validIndices, frameInfoKFParams.lambdaMean);
 
                 // 帧距自增（建议放在 NeedNewKeyFrame 一开始的地方，每帧+1）
                 mInfoKFState.framesSinceRef++;
 
-                bool infoAllow = InfoKFPolicy::AllowNewKF(H_curr, n_matches_curr, mInfoKFState, mInfoKFParams);
+                bool infoAllow = InfoKFPolicy::AllowNewKF(H_curr, n_matches_curr, mInfoKFState, frameInfoKFParams);
                 if(!infoAllow) {
                     std::cout << "[Tracking] KF rejected by info gating" << std::endl;
                     return false;
@@ -3723,12 +3864,10 @@ void Tracking::CreateNewKeyFrame()
 
     KeyFrame* pKF = new KeyFrame(mCurrentFrame,mpAtlas->GetCurrentMap(),mpKeyFrameDB);
     #ifdef ORB3_USE_INFOSEL
-    // Keep InfoKF fully dormant until inertial initialization finishes.
-    // After IMU init, the same YAML switch automatically takes effect again.
-    if(mInfoKFParams.use && mCurrentFrame.HasPose() &&
-       mpAtlas->GetCurrentMap() &&
-       mpAtlas->GetCurrentMap()->isImuInitialized() &&
-       mpAtlas->GetCurrentMap()->GetIniertialBA2())
+    // Visual modes are ready immediately; inertial modes wait for IMU bootstrap.
+    InfoKFParams frameInfoKFParams = GetCurrentInfoKFParams();
+    if(frameInfoKFParams.use && mCurrentFrame.HasPose() &&
+       IsInfoModuleRuntimeReady())
     {
         std::vector<int> validIndices;
         validIndices.reserve(mCurrentFrame.N);
@@ -3743,9 +3882,9 @@ void Tracking::CreateNewKeyFrame()
             // 将当前关键帧的匹配数记作 reference，用于后续 r = n_matches_curr / refMatches
             mInfoKFState.refMatches = mnMatchesInliers;
             Eigen::Matrix<double,6,6> H_new =
-                InfoGain::ComputePoseInformation(mCurrentFrame, validIndices, mInfoKFParams.lambdaMean);
+                InfoGain::ComputePoseInformation(mCurrentFrame, validIndices, frameInfoKFParams.lambdaMean);
 
-            InfoKFPolicy::OnKeyFrameCreated(H_new, mInfoKFState, mInfoKFParams);
+            InfoKFPolicy::OnKeyFrameCreated(H_new, mInfoKFState, frameInfoKFParams);
         }
     }
     #endif
@@ -3969,18 +4108,173 @@ void Tracking::LoadInfoParams(cv::FileStorage& fSettings)
             mInfoKFParams.maxFramesForce = (int)node;
     }
 
+    InitializeAdaptiveParams();
+    LoadAdaptiveParams(fSettings);
+
     std::cout << "[Tracking] Info selection params loaded:\n"
               << "  InfoSelector enabled: " << (mUseInfoSelector ? "YES" : "NO") << "\n"
               << "  TopK: " << mInfoSelParams.topK << "\n"
               << "  w_uniform: " << mInfoSelParams.w_uniform << "\n"
-              << "  InfoKF enabled (runtime): "
-              << (mInfoKFParams.use ? "YES, after IMU init" : "NO") << "\n"
+              << "  InfoKF enabled: " << (mInfoKFParams.use ? "YES" : "NO") << "\n"
               << "  AllowBitsDrop(bits): " << mInfoKFParams.allowBitsDrop << "\n"
               << "  Dyn(alpha,beta,tau[min,max]): "
               << mInfoKFParams.dynAlpha << "," << mInfoKFParams.dynBeta << ","
               << mInfoKFParams.dynTauMin << "," << mInfoKFParams.dynTauMax << "\n"
               << "  Cum(decay,thr): " << mInfoKFParams.cumDecay << "," << mInfoKFParams.cumThr << "\n"
               << "  MaxFramesForce: " << mInfoKFParams.maxFramesForce << std::endl;
+}
+
+bool Tracking::IsInfoModuleRuntimeReady() const
+{
+    if(!mpAtlas || !mpAtlas->GetCurrentMap())
+        return false;
+
+    const bool inertial_sensor =
+        mSensor == System::IMU_MONOCULAR ||
+        mSensor == System::IMU_STEREO ||
+        mSensor == System::IMU_RGBD;
+    if(!inertial_sensor)
+        return true;
+
+    return mpAtlas->GetCurrentMap()->isImuInitialized() &&
+           mpAtlas->GetCurrentMap()->GetIniertialBA2();
+}
+
+void Tracking::InitializeAdaptiveParams()
+{
+    mAdaptiveFixedParams.kappa_top = mInfoSelParams.topK;
+    mAdaptiveFixedParams.alpha = mInfoSelParams.w_uniform;
+    mAdaptiveFixedParams.tau0 = mInfoKFParams.allowBitsDrop;
+    mAdaptiveFixedParams.theta_drop = mInfoKFParams.cumThr;
+    mAdaptiveFixedParams.keyframe_aggressiveness = 1.0;
+
+    mAdaptiveConfig.min_kappa_top = std::min(mAdaptiveConfig.min_kappa_top, mAdaptiveFixedParams.kappa_top);
+    mAdaptiveConfig.max_kappa_top = std::max(mAdaptiveConfig.max_kappa_top, mAdaptiveFixedParams.kappa_top);
+    mAdaptiveConfig.min_tau0 = std::min(mAdaptiveConfig.min_tau0, mAdaptiveFixedParams.tau0);
+    mAdaptiveConfig.max_tau0 = std::max(mAdaptiveConfig.max_tau0, mAdaptiveFixedParams.tau0);
+
+    mAdaptiveCurrentParams = mAdaptiveFixedParams;
+    ClampAdaptiveParams(mAdaptiveCurrentParams, mAdaptiveConfig);
+}
+
+void Tracking::LoadAdaptiveParams(cv::FileStorage& fSettings)
+{
+    auto readBool = [&](const char* key, bool& value) {
+        cv::FileNode node = fSettings[key];
+        if(!node.empty())
+            value = ((int)node != 0);
+    };
+    auto readInt = [&](const char* key, int& value) {
+        cv::FileNode node = fSettings[key];
+        if(!node.empty())
+            value = (int)node;
+    };
+    auto readDouble = [&](const char* key, double& value) {
+        cv::FileNode node = fSettings[key];
+        if(!node.empty())
+            value = (double)node;
+    };
+
+    readBool("EnableAdaptiveIDVO", mAdaptiveConfig.enable_adaptive_idvo);
+    readBool("EnableAdaptiveLogging", mAdaptiveConfig.enable_logging);
+    readInt("MinKappaTop", mAdaptiveConfig.min_kappa_top);
+    readInt("MaxKappaTop", mAdaptiveConfig.max_kappa_top);
+    readDouble("MinTau0", mAdaptiveConfig.min_tau0);
+    readDouble("MaxTau0", mAdaptiveConfig.max_tau0);
+    readDouble("TrackingTimeBudget", mAdaptiveConfig.tracking_time_budget_ms);
+    readDouble("SmoothFactor", mAdaptiveConfig.smooth_factor);
+    readDouble("Adaptive.LowLogDetH", mAdaptiveConfig.low_logdet_H);
+    readDouble("Adaptive.PoorConditionNumber", mAdaptiveConfig.poor_condition_number);
+    readDouble("Adaptive.LowInlierRatio", mAdaptiveConfig.low_inlier_ratio);
+    readDouble("Adaptive.BlurThreshold", mAdaptiveConfig.blur_threshold);
+
+    cv::FileNode policyNode = fSettings["AdaptivePolicyType"];
+    if(!policyNode.empty())
+    {
+        std::string policyName;
+        policyNode >> policyName;
+        mAdaptiveConfig.policy_type = ParseAdaptivePolicyType(policyName);
+    }
+
+    cv::FileNode logPathNode = fSettings["AdaptiveLogPath"];
+    if(!logPathNode.empty())
+        logPathNode >> mAdaptiveConfig.log_path;
+
+    mAdaptiveConfig.min_kappa_top = std::max(1, mAdaptiveConfig.min_kappa_top);
+    mAdaptiveConfig.max_kappa_top = std::max(mAdaptiveConfig.min_kappa_top, mAdaptiveConfig.max_kappa_top);
+    mAdaptiveConfig.min_tau0 = std::max(1.0e-9, mAdaptiveConfig.min_tau0);
+    mAdaptiveConfig.max_tau0 = std::max(mAdaptiveConfig.min_tau0, mAdaptiveConfig.max_tau0);
+    mAdaptiveConfig.smooth_factor = std::max(0.0, std::min(1.0, mAdaptiveConfig.smooth_factor));
+
+    ClampAdaptiveParams(mAdaptiveFixedParams, mAdaptiveConfig);
+    mAdaptiveCurrentParams = mAdaptiveFixedParams;
+    mAdaptiveLogger.Configure(mAdaptiveConfig.enable_logging, mAdaptiveConfig.log_path);
+
+    std::cout << "[Tracking] Adaptive IDVO params loaded:\n"
+              << "  EnableAdaptiveIDVO: " << (mAdaptiveConfig.enable_adaptive_idvo ? "YES" : "NO") << "\n"
+              << "  AdaptivePolicyType: " << AdaptivePolicyTypeName(mAdaptiveConfig.policy_type) << "\n"
+              << "  KappaTop[min,max]: " << mAdaptiveConfig.min_kappa_top << ","
+              << mAdaptiveConfig.max_kappa_top << "\n"
+              << "  Tau0[min,max]: " << mAdaptiveConfig.min_tau0 << ","
+              << mAdaptiveConfig.max_tau0 << "\n"
+              << "  TrackingTimeBudget(ms): " << mAdaptiveConfig.tracking_time_budget_ms << "\n"
+              << "  SmoothFactor: " << mAdaptiveConfig.smooth_factor << "\n"
+              << "  EnableAdaptiveLogging: " << (mAdaptiveConfig.enable_logging ? "YES" : "NO") << "\n"
+              << "  AdaptiveLogPath: " << mAdaptiveConfig.log_path << std::endl;
+}
+
+void Tracking::UpdateAdaptiveParamsFromState(const AdaptiveState& state)
+{
+    mAdaptiveLastState = state;
+    mAdaptiveStateValid = true;
+
+    if(!mAdaptiveConfig.enable_adaptive_idvo ||
+       mAdaptiveConfig.policy_type == AdaptivePolicyType::Fixed)
+    {
+        mAdaptiveCurrentParams = mAdaptiveFixedParams;
+        return;
+    }
+
+    if(mAdaptiveConfig.policy_type == AdaptivePolicyType::RuleBased)
+    {
+        mAdaptiveCurrentParams = mRuleBasedAdaptivePolicy.Decide(
+            state,
+            mAdaptiveCurrentParams,
+            mAdaptiveFixedParams,
+            mAdaptiveConfig);
+    }
+    else
+    {
+        mAdaptiveCurrentParams = mFixedAdaptivePolicy.Decide(
+            state,
+            mAdaptiveCurrentParams,
+            mAdaptiveFixedParams,
+            mAdaptiveConfig);
+    }
+}
+
+InfoSelectParams Tracking::GetCurrentInfoSelectParams() const
+{
+    InfoSelectParams params = mInfoSelParams;
+    if(mAdaptiveConfig.enable_adaptive_idvo &&
+       mAdaptiveConfig.policy_type != AdaptivePolicyType::Fixed)
+    {
+        params.topK = mAdaptiveCurrentParams.kappa_top;
+        params.w_uniform = static_cast<float>(mAdaptiveCurrentParams.alpha);
+    }
+    return params;
+}
+
+InfoKFParams Tracking::GetCurrentInfoKFParams() const
+{
+    InfoKFParams params = mInfoKFParams;
+    if(mAdaptiveConfig.enable_adaptive_idvo &&
+       mAdaptiveConfig.policy_type != AdaptivePolicyType::Fixed)
+    {
+        params.allowBitsDrop = mAdaptiveCurrentParams.tau0;
+        params.cumThr = mAdaptiveCurrentParams.theta_drop;
+    }
+    return params;
 }
 #endif
 

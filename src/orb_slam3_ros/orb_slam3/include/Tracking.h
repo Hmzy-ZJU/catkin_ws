@@ -45,6 +45,7 @@
 
 // 新增信息论模块（条件编译）
 #ifdef ORB3_USE_INFOSEL
+#include "AdaptiveIDVO.h"
 #include "InfoGain.h"
 #include "InfoKFPolicy.h"
 #endif
@@ -225,6 +226,7 @@ struct RuntimeStats {
     double mem_mb  = 0.0;              // 平均常驻内存（RSS）
 };
 RuntimeStats mRtStats;
+void LogAdaptiveFrame(double track_ms);
 inline void RecordTrackTime(const std::chrono::steady_clock::time_point& t_start)
 {
     // 结束时间
@@ -234,6 +236,7 @@ inline void RecordTrackTime(const std::chrono::steady_clock::time_point& t_start
 
     // 存入统计容器
     mRtStats.track_ms.push_back(track_ms);
+    LogAdaptiveFrame(track_ms);
 }
 // 导出到文件（CSV）
 void RegisterEnhanceTime(double ms);          // 记录图像增强时间
@@ -406,18 +409,30 @@ protected:
     Sophus::SE3f mTlr;
 
     void newParameterLoader(Settings* settings);
-//若启用信息选择：保存特征选择参数、关键帧门控策略参数与状态，提供从文件加载的函数。
 #ifdef ORB3_USE_INFOSEL
-    // 信息论特征选择参数
     InfoSelectParams mInfoSelParams;
-    // InfoSelector 总开关（由 yaml: InfoSelector.Enable 控制）
     bool mUseInfoSelector;
-    // 信息论关键帧门控参数和状态
     InfoKFParams mInfoKFParams;
     InfoKFState mInfoKFState;
-    
-    // 参数加载函数
+
+    AdaptiveConfig mAdaptiveConfig;
+    AdaptiveParams mAdaptiveFixedParams;
+    AdaptiveParams mAdaptiveCurrentParams;
+    AdaptiveState mAdaptiveLastState;
+    FixedAdaptivePolicy mFixedAdaptivePolicy;
+    RuleBasedAdaptivePolicy mRuleBasedAdaptivePolicy;
+    AdaptiveLogger mAdaptiveLogger;
+    bool mAdaptiveStateValid = false;
+    bool mAdaptiveKeyFrameInserted = false;
+    double mAdaptiveLastTrackTimeMs = 0.0;
+
     void LoadInfoParams(cv::FileStorage& fSettings);
+    void LoadAdaptiveParams(cv::FileStorage& fSettings);
+    void InitializeAdaptiveParams();
+    bool IsInfoModuleRuntimeReady() const;
+    void UpdateAdaptiveParamsFromState(const AdaptiveState& state);
+    InfoSelectParams GetCurrentInfoSelectParams() const;
+    InfoKFParams GetCurrentInfoKFParams() const;
 #endif
 #ifdef REGISTER_LOOP
     bool Stop();
@@ -435,5 +450,3 @@ public:
 } //namespace ORB_SLAM
 
 #endif // TRACKING_H
-
-

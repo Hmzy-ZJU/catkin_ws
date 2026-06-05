@@ -108,3 +108,15 @@ InfoKF.Cum.Thr:   0.5            # Θ_cum（正值）：累计下降超过 2 bit
 
 # 最大帧距约束
 InfoKF.MaxFramesForce: 15        # 超过 20 帧强制插 KF
+
+# =============== UW-AIDVO adaptive controller ===============
+EnableAdaptiveIDVO: 0
+AdaptivePolicyType: "Fixed"      # Fixed / RuleBased / Learned
+MinKappaTop: 60
+MaxKappaTop: 180
+MinTau0: 0.005
+MaxTau0: 0.20
+TrackingTimeBudget: 30.0         # ms
+SmoothFactor: 0.80
+EnableAdaptiveLogging: 0
+AdaptiveLogPath: "adaptive_idvo_log.csv"

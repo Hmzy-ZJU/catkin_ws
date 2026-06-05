@@ -103,7 +103,7 @@ include(${PROJECT_SOURCE_DIR}/orb_slam3/Thirdparty/g2o/CMakeLists.txt)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/orb_slam3/lib)
 
 #---time---
-add_definitions(-DREGISTER_TIMES -DORB3_USE_INFOSEL)
+add_definitions(-DREGISTER_TIMES)
 
 # ORB-SLAM3 core library
 add_library(${PROJECT_NAME} SHARED
@@ -168,6 +168,8 @@ add_library(${PROJECT_NAME} SHARED
   # 新增信息论模块
   orb_slam3/src/InfoGain.cc
   orb_slam3/src/InfoKFPolicy.cc
+  orb_slam3/src/AdaptiveIDVO.cc
+  orb_slam3/src/ORBAdaptiveStateCollector.cc
 )
 
 target_link_libraries(${PROJECT_NAME}

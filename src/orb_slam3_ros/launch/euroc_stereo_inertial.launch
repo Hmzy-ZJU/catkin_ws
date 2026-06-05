@@ -1,4 +1,6 @@
 <launch>
+    <arg name="voc_file" default="$(find orb_slam3_ros)/orb_slam3/Vocabulary/ORBvoc.txt.bin"/>
+    <arg name="settings_file" default="$(find orb_slam3_ros)/config/Stereo-Inertial/EuRoC.yaml"/>
     <param name="use_sim_time" value="true" />
 
     <!-- Main node -->
@@ -9,8 +11,8 @@
         <remap from="/imu"                      to="/imu0"/>
 
         <!-- Parameters for original ORB-SLAM3 -->
-        <param name="voc_file"      type="string" value="$(find orb_slam3_ros)/orb_slam3/Vocabulary/ORBvoc.txt.bin"/>
-        <param name="settings_file" type="string" value="$(find orb_slam3_ros)/config/Stereo-Inertial/EuRoC.yaml"/>
+        <param name="voc_file"      type="string" value="$(arg voc_file)"/>
+        <param name="settings_file" type="string" value="$(arg settings_file)"/>
 
         <!-- Parameters for ROS -->
         <param name="world_frame_id"    type="string"   value="world" />
