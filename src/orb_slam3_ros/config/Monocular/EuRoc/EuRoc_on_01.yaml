@@ -1,0 +1,88 @@
+%YAML:1.0
+
+
+Camera.type: "PinHole"
+
+# Camera calibration and distortion parameters (OpenCV) 
+Camera.fx: 458.654
+Camera.fy: 457.296
+Camera.cx: 367.215
+Camera.cy: 248.375
+
+Camera.k1: -0.28340811
+Camera.k2: 0.07395907
+Camera.p1: 0.00019359
+Camera.p2: 1.76187114e-05
+
+Camera.width: 752
+Camera.height: 480
+
+Camera.newWidth: 600
+Camera.newHeight: 350
+
+# Camera frames per second 
+Camera.fps: 20
+
+# Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)
+Camera.RGB: 1
+
+#==================== ORB Extractor ====================
+# 水下/低纹理：适度多特征 + 降低 FAST 初阈
+ORBextractor.nFeatures: 900
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 12
+ORBextractor.minThFAST: 7
+
+
+#==================== Viewer ====================
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0
+# ==================== UW-Fusion（从 YAML 读取） ====================
+# Enhance-Default（默认增强）
+uwfusion.enable: 1
+uwfusion.levels: 4
+uwfusion.scb_percent: 0.6
+uwfusion.bilateral_d: 3
+uwfusion.bilateral_sigma_color: 4.0
+uwfusion.bilateral_sigma_space: 3.5
+uwfusion.clahe_clip: 1.4
+uwfusion.clahe_tile: 8
+uwfusion.exposed_avg: 0.5
+uwfusion.exposed_sigma: 0.25
+
+# ==================== InfoSelector（点号扁平写法） ====================
+InfoSelector.Enable: 0
+InfoSelector.TopK: 95
+InfoSelector.UseUniform: 0
+InfoSelector.w_uniform: 0.12
+InfoSelector.MinPxDist: 7
+
+InfoSelector.LambdaInit: 1.0e-3
+
+
+# =============== InfoKF (keyframe gating) ===============
+InfoKF.Use: 1             # 打开信息论关键帧门控
+InfoKF.AllowBitsDrop: 1.8 # T0：信息变化容忍度（主参数）
+
+# 自适应强度（轻微即可）
+InfoKF.Dyn.Alpha: 0.25       # 影响 Teff 的幅度不要太大
+InfoKF.Dyn.Beta:  0.0       # 暂时不用，可以留着以后扩展
+
+# 自适应阈值上下界（建议）
+InfoKF.Dyn.TauMin: 0.1
+InfoKF.Dyn.TauMax: 5.0
+
+# 累计量 & 帧距兜底
+InfoKF.Cum.Decay: 0.95
+InfoKF.Cum.Thr:   0.5
+InfoKF.MaxFramesForce: 300  # 目前你说先不启用，可以先设很大
+

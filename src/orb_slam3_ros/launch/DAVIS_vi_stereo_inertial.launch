@@ -1,0 +1,44 @@
+<launch>
+  <!-- 用于回放 bag -->
+  <param name="use_sim_time" value="true"/>
+
+  <!-- ORB-SLAM3 主节点 -->
+  <node name="orb_slam3" pkg="orb_slam3_ros" type="ros_stereo_inertial" output="screen">
+    <!-- 依据数据集映射订阅话题 -->
+    <remap from="/camera/left/image_raw"  to="/davis_left/image_raw"/>
+    <remap from="/camera/right/image_raw" to="/davis_right/image_raw"/>
+    <remap from="/imu"                    to="/davis_left/imu"/>
+
+    <!-- ORB-SLAM3 参数 -->
+    <param name="voc_file"      type="string" value="/home/hmzy/catkin_ws/src/orb_slam3_ros/orb_slam3/Vocabulary/ORBvoc.txt.bin"/>
+    <param name="settings_file" type="string" value="/home/hmzy/catkin_ws/src/orb_slam3_ros/config/Stereo-Inertial/DAVIS.yaml"/>
+
+    <!-- ROS frame 参数 -->
+    <param name="world_frame_id"  type="string" value="world"/>
+    <param name="cam_frame_id"    type="string" value="camera"/>
+    <param name="imu_frame_id"    type="string" value="imu"/>
+    <param name="enable_pangolin" type="bool"   value="true"/>
+  </node>
+
+  <!-- RViz：把其内部配置用到的 /cam0、/cam1（或 left/right）映射到 DAVIS 话题 -->
+  <node name="rviz" pkg="rviz" type="rviz"
+        args="-d $(find orb_slam3_ros)/config/orb_slam3_with_imu.rviz" output="screen">
+    <!-- RViz 配置里若写的是 /cam0/image_raw、/cam1/image_raw -->
+    <remap from="/cam0/image_raw" to="/davis_left/image_raw"/>
+    <remap from="/cam1/image_raw" to="/davis_right/image_raw"/>
+    <!-- 兼容一些常见别名（可保留，没用到也不影响） -->
+    <remap from="/left/image_raw"          to="/davis_left/image_raw"/>
+    <remap from="/right/image_raw"         to="/davis_right/image_raw"/>
+    <remap from="/camera/left/image_raw"   to="/davis_left/image_raw"/>
+    <remap from="/camera/right/image_raw"  to="/davis_right/image_raw"/>
+  </node>
+
+  <!-- 轨迹服务器（注意：帧名不要带前导斜杠）-->
+  <node pkg="hector_trajectory_server" type="hector_trajectory_server"
+        name="trajectory_server_orb_slam3" output="screen" ns="orb_slam3_ros">
+    <param name="target_frame_name" value="world"/>
+    <param name="source_frame_name" value="imu"/>
+    <param name="trajectory_update_rate"  value="20.0"/>
+    <param name="trajectory_publish_rate" value="20.0"/>
+  </node>
+</launch>

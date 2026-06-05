@@ -1,0 +1,90 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# Tank stereo configuration
+# Note: Stereo.T_c1_c2 currently uses the baseline inferred from Camera.bf / Camera.fx.
+# Replace it with the measured left-right extrinsic once a calibrated stereo rig matrix is available.
+#--------------------------------------------------------------------------------------------
+File.version: "1.0"
+
+Camera.type: "PinHole"
+
+Camera1.fx: 655.0
+Camera1.fy: 655.0
+Camera1.cx: 306.0
+Camera1.cy: 256.0
+Camera1.k1: 0.0
+Camera1.k2: 0.0
+Camera1.p1: 0.0
+Camera1.p2: 0.0
+
+Camera2.fx: 655.0
+Camera2.fy: 655.0
+Camera2.cx: 306.0
+Camera2.cy: 256.0
+Camera2.k1: 0.0
+Camera2.k2: 0.0
+Camera2.p1: 0.0
+Camera2.p2: 0.0
+
+Camera.width: 612
+Camera.height: 512
+Camera.fps: 20
+Camera.RGB: 0
+
+Stereo.ThDepth: 40.0
+Stereo.T_c1_c2: !!opencv-matrix
+  rows: 4
+  cols: 4
+  dt: f
+  data: [1.0, 0.0, 0.0, 0.12044528,
+         0.0, 1.0, 0.0, 0.0,
+         0.0, 0.0, 1.0, 0.0,
+         0.0, 0.0, 0.0, 1.0]
+
+ORBextractor.nFeatures: 1200
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0
+Viewer.imageViewScale: 1.0
+
+uwfusion.enable: 1
+uwfusion.levels: 4
+uwfusion.scb_percent: 0.6
+uwfusion.bilateral_d: 3
+uwfusion.bilateral_sigma_color: 4.0
+uwfusion.bilateral_sigma_space: 3.5
+uwfusion.clahe_clip: 1.4
+uwfusion.clahe_tile: 8
+uwfusion.exposed_avg: 0.5
+uwfusion.exposed_sigma: 0.25
+
+InfoSelector.Enable: 1
+InfoSelector.TopK: 95
+InfoSelector.UseUniform: 0
+InfoSelector.w_uniform: 0.12
+InfoSelector.MinPxDist: 7
+InfoSelector.LambdaInit: 1.0e-3
+
+InfoKF.Use: 1
+InfoKF.AllowBitsDrop: 1.5
+InfoKF.LambdaMean: 1.0e-3
+InfoKF.Dyn.Alpha: 0.25
+InfoKF.Dyn.Beta: 0.0
+InfoKF.Dyn.TauMin: 0.1
+InfoKF.Dyn.TauMax: 5.0
+InfoKF.Cum.Decay: 0.95
+InfoKF.Cum.Thr: 0.5
+InfoKF.MaxFramesForce: 60

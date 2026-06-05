@@ -28,3 +28,68 @@ __pycache__/
 .idea/
 
 *.log
+
+
+
+# ROS / catkin build outputs
+
+/build/
+
+/devel/
+
+/install/
+
+/log/
+
+/logs/
+
+/.catkin_tools/
+
+
+
+# Datasets: keep GT if needed, ignore raw data and results
+
+dataset_*/data/
+
+dataset_*/results/
+
+dataset_*/results_*/
+
+
+
+# Large ROS bag / recording files
+
+*.bag
+
+*.bag.active
+
+*.db3
+
+*.mcap
+
+
+
+# Runtime logs
+
+*.log
+
+
+
+# Python cache
+
+__pycache__/
+
+*.pyc
+
+*.pyo
+
+
+
+# Temporary files
+
+*.tmp
+
+*.swp
+
+.DS_Store
+

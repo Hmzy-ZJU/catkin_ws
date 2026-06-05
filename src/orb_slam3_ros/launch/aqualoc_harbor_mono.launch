@@ -1,0 +1,29 @@
+<launch> 
+  <!-- 允许从命令行 / 脚本覆盖的参数 -->
+  <arg name="voc_file"
+       default="$(find orb_slam3_ros)/orb_slam3/Vocabulary/ORBvoc.txt.bin"/>
+
+  <arg name="settings_file"
+       default="$(find orb_slam3_ros)/config/Monocular/Aqualoc_harbor.yaml"/>
+
+  <!-- 这个 use_sim_time 你脚本里也有 set，一般保留也没问题 -->
+  <param name="use_sim_time" value="true" />
+
+  <!-- 主节点 -->
+  <node name="orb_slam3" pkg="orb_slam3_ros" type="ros_mono" output="screen">
+    <!-- 这里改成用 arg，而不是写死路径 -->
+    <param name="voc_file"      type="string" value="$(arg voc_file)"/>
+    <param name="settings_file" type="string" value="$(arg settings_file)"/>
+
+    <!-- TF 与可视化 -->
+    <param name="world_frame_id"  type="string" value="world"/>
+    <param name="cam_frame_id"    type="string" value="camera"/>
+    <param name="enable_pangolin" type="bool"   value="false"/>
+
+  </node>
+  
+  <!-- RViz 可选 -->
+  <node name="rviz" pkg="rviz" type="rviz"
+        args="-d $(find orb_slam3_ros)/config/orb_slam3_no_imu.rviz"
+        output="screen" />
+</launch>

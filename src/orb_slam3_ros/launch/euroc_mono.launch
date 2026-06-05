@@ -1,0 +1,41 @@
+<launch>
+  <!-- 可从命令行覆盖的参数 -->
+  <arg name="voc_file"
+       default="$(find orb_slam3_ros)/orb_slam3/Vocabulary/ORBvoc.txt.bin"/>
+
+  <arg name="settings_file"
+       default="$(find orb_slam3_ros)/config/Monocular/EuRoc/EuRoc_off_00.yaml"/>
+
+  <!-- EuRoC 的图像话题，一般是 /cam0/image_raw -->
+  <arg name="image_topic" default="/cam0/image_raw"/>
+
+  <!-- 用 rosbag 时打开仿真时间 -->
+  <param name="use_sim_time" value="true" />
+
+  <!-- ORB-SLAM3 主节点（保持和 Harbor 一样叫 orb_slam3） -->
+  <node name="orb_slam3"
+        pkg="orb_slam3_ros"
+        type="ros_mono"
+        output="screen">
+
+    <!-- 让节点内部还是订阅 /camera/image_raw，但从外面 remap 到 EuRoC 的话题 -->
+    <remap from="/camera/image_raw" to="$(arg image_topic)" />
+
+    <!-- ORB-SLAM3 的配置 -->
+    <param name="voc_file"      type="string" value="$(arg voc_file)"/>
+    <param name="settings_file" type="string" value="$(arg settings_file)"/>
+
+    <!-- 坐标系与 Pangolin -->
+    <param name="world_frame_id"  type="string" value="world"/>
+    <param name="cam_frame_id"    type="string" value="camera"/>
+    <param name="enable_pangolin" type="bool"   value="false"/>
+  </node>
+
+  <!-- RViz，可视化配置沿用以前的 -->
+  <node name="rviz"
+        pkg="rviz"
+        type="rviz"
+        args="-d $(find orb_slam3_ros)/config/orb_slam3_no_imu.rviz"
+        output="screen" />
+
+</launch>

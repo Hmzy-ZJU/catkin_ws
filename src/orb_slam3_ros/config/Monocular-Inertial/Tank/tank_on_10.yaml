@@ -1,0 +1,124 @@
+%YAML:1.0
+
+#====================================================================
+# 相机参数（Tank 数据集，左目单目）
+#====================================================================
+Camera.type: "PinHole"
+
+# 内参（来自数据集说明）
+Camera.fx: 655.0
+Camera.fy: 655.0
+Camera.cx: 306.0
+Camera.cy: 256.0
+
+# Tank 数据集已做去畸变，这里设为零
+Camera.k1: 0.0
+Camera.k2: 0.0
+Camera.p1: 0.0
+Camera.p2: 0.0
+
+# 分辨率
+Camera.width: 612
+Camera.height: 512
+
+# 帧率
+Camera.fps: 20.0
+
+# 彩色图像
+Camera.RGB: true
+
+# （可选）双目基线 * fx，单目不会用到，留着不影响
+Camera.bf: 78.89165891925023
+
+#====================================================================
+# IMU 参数（MicroStrain 3DM-GX5-AHRS，用 Tank 论文和标定结果近似）
+#====================================================================
+
+# 从相机坐标系到 IMU（body）坐标系的刚体变换 T_bc
+# 这里直接使用数据集中给出的 T_imu_camera
+Tbc: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: f
+   data: [ -0.0165093370, -0.0174868879, -0.9997107834, -0.211687435,
+           -0.0105946453,  0.9997939789, -0.0173133820, -0.097259169,
+            0.9998075791,  0.0103057487, -0.0166912031, -0.056238089,
+            0.0,           0.0,           0.0,           1.0 ]
+
+# 角速度噪声密度 [rad/s/√Hz]
+IMU.NoiseGyro: 1.0e-4
+
+# 加速度噪声密度 [m/s^2/√Hz]
+IMU.NoiseAcc: 2.3e-4
+
+# 陀螺零偏随机游走 [rad/s^2/√Hz]（近似）
+IMU.GyroWalk: 3.6e-6
+
+# 加速度零偏随机游走 [m/s^3/√Hz]（近似）
+IMU.AccWalk: 6.7e-6
+
+# IMU 输出频率（论文表 2：Ping Rate = 333 Hz）
+IMU.Frequency: 333
+
+
+
+#==================== ORB Extractor ====================
+# 水下/低纹理：适度多特征 + 降低 FAST 初阈
+ORBextractor.nFeatures: 900
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 12
+ORBextractor.minThFAST: 7
+
+
+#==================== Viewer ====================
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0
+# ==================== UW-Fusion（从 YAML 读取） ====================
+# Enhance-Default（默认增强）
+uwfusion.enable: 1
+uwfusion.levels: 4
+uwfusion.scb_percent: 0.6
+uwfusion.bilateral_d: 3
+uwfusion.bilateral_sigma_color: 4.0
+uwfusion.bilateral_sigma_space: 3.5
+uwfusion.clahe_clip: 1.4
+uwfusion.clahe_tile: 8
+uwfusion.exposed_avg: 0.5
+uwfusion.exposed_sigma: 0.25
+
+# ==================== InfoSelector（点号扁平写法） ====================
+InfoSelector.Enable: 1
+InfoSelector.TopK: 95
+InfoSelector.UseUniform: 1
+InfoSelector.w_uniform: 0.12
+InfoSelector.MinPxDist: 7
+
+InfoSelector.LambdaInit: 1.0e-3
+
+
+# =============== InfoKF (keyframe gating) ===============
+InfoKF.Use: 0             # 打开信息论关键帧门控
+InfoKF.AllowBitsDrop: 1.0 # T0：信息变化容忍度（主参数）
+
+# 自适应强度（轻微即可）
+InfoKF.Dyn.Alpha: 0.25       # 影响 Teff 的幅度不要太大
+InfoKF.Dyn.Beta:  0.0       # 暂时不用，可以留着以后扩展
+
+# 自适应阈值上下界（建议）
+InfoKF.Dyn.TauMin: 0.1
+InfoKF.Dyn.TauMax: 5.0
+
+# 累计量 & 帧距兜底
+InfoKF.Cum.Decay: 0.95
+InfoKF.Cum.Thr:   0.5
+InfoKF.MaxFramesForce: 300  # 目前你说先不启用，可以先设很大
+

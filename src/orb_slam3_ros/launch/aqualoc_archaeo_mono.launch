@@ -1,0 +1,27 @@
+<launch> 
+  <!-- 允许脚本/命令行覆盖的参数 -->
+  <arg name="voc_file"
+       default="$(find orb_slam3_ros)/orb_slam3/Vocabulary/ORBvoc.txt.bin"/>
+
+  <!-- 默认 archae0 配置 -->
+  <arg name="settings_file"
+       default="$(find orb_slam3_ros)/config/Monocular/Aquacular_archaeo/Aqualoc_archaeo_on_11.yaml"/>
+
+  <param name="use_sim_time" value="true" />
+
+  <!-- 主 SLAM 节点 -->
+  <node name="orb_slam3" pkg="orb_slam3_ros" type="ros_mono" output="screen">
+    <param name="voc_file"      type="string" value="$(arg voc_file)"/>
+    <param name="settings_file" type="string" value="$(arg settings_file)"/>
+
+    <param name="world_frame_id"  type="string" value="world"/>
+    <param name="cam_frame_id"    type="string" value="camera"/>
+    <param name="enable_pangolin" type="bool"   value="false"/>
+
+  </node>
+  
+  <!-- RViz 可选；批量评估时脚本会自动 kill 掉 -->
+  <node name="rviz" pkg="rviz" type="rviz"
+        args="-d $(find orb_slam3_ros)/config/orb_slam3_no_imu.rviz"
+        output="screen" />
+</launch>

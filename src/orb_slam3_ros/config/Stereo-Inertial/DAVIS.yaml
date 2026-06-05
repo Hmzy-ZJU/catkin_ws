@@ -1,0 +1,106 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# System config (可选)
+#--------------------------------------------------------------------------------------------
+File.version: "1.0"
+# System.LoadAtlasFromFile: "MapDAVIS_StereoImu"
+# System.SaveAtlasToFile: "MapDAVIS_StereoImu"
+
+#--------------------------------------------------------------------------------------------
+# Camera Parameters
+#--------------------------------------------------------------------------------------------
+Camera.type: "PinHole"
+
+# ---- Left camera (Camera1 = davis_left) ----
+Camera1.fx: 339.9013152375
+Camera1.fy: 339.8994042108
+Camera1.cx: 165.5112406158
+Camera1.cy: 125.9886424127
+
+# RadTan: k1 k2 p1 p2 (k3 置 0)
+
+
+Camera1.k1: -0.3683406749
+Camera1.k2:  0.2389348528
+Camera1.p1:  0.0007707632
+Camera1.p2: -0.0012147090
+Camera1.k3:  0.0
+
+# ---- Right camera (Camera2 = davis_right) ----
+Camera2.fx: 339.5622298468
+Camera2.fy: 339.4551513333
+Camera2.cx: 178.8427213125
+Camera2.cy: 129.3087193366
+
+Camera2.k1: -0.3758209458
+Camera2.k2:  0.2584842382
+Camera2.p1:  0.0004283191
+Camera2.p2: -0.0002163593
+Camera2.k3:  0.0
+
+# 图像尺寸与帧率
+Camera.width: 346
+Camera.height: 260
+Camera.fps: 20
+Camera.RGB: 0        # DAVIS 是灰度，写 0
+# 新增（很重要）
+Camera.bf: 39.7053
+# 近远阈值（可按需调）
+Stereo.ThDepth: 40.0
+
+# 右目 -> 左目外参（用你给的 T_cam0_cam1：camera1/right -> camera0/left）
+Stereo.T_c1_c2: !!opencv-matrix
+  rows: 4
+  cols: 4
+  dt: f
+  data: [ 0.99949016,  0.00938946,  0.03051659,  0.11681431,
+         -0.00795921,  0.99887930, -0.04665614,  0.01194740,
+         -0.03092046,  0.04638946,  0.99844476, -0.02775573,
+          0.0,         0.0,         0.0,         1.0 ]
+
+#--------------------------------------------------------------------------------------------
+# IMU （单位与你给的一致）
+#--------------------------------------------------------------------------------------------
+IMU.NoiseGyro: 0.0038630508      # [rad/s/√Hz]
+IMU.NoiseAcc:  0.0416576542      # [m/s^2/√Hz]
+IMU.GyroWalk:  0.0000377871      # [rad/s^2/√Hz]
+IMU.AccWalk:   0.0006405217      # [m/s^3/√Hz]
+IMU.Frequency: 200.0
+
+
+
+IMU.T_b_c1: !!opencv-matrix
+  rows: 4
+  cols: 4
+  dt: f
+  data: [ 0.99947889,  0.02639107,  0.01858662,  0.00933934,
+         -0.02605721,  0.99949873, -0.01798085, -0.00883799,
+         -0.01905183,  0.01748717,  0.99966556,  0.01375930,
+          0.0,         0.0,         0.0,         1.0 ]
+
+
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+ORBextractor.nFeatures: 800
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 15
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters（填上避免缺省时报错）
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -1.7
+Viewer.ViewpointZ: 0.8
+Viewer.ViewpointF: -500.0
+Viewer.imageViewScale: 1.0

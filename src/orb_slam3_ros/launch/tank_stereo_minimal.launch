@@ -1,0 +1,24 @@
+<launch>
+  <!-- 最小化双目测试 -->
+  
+  <arg name="voc_file"
+       default="$(find orb_slam3_ros)/orb_slam3/Vocabulary/ORBvoc.txt.bin"/>
+
+  <arg name="settings_file"
+       default="$(find orb_slam3_ros)/config/Stereo/Tank/Tank_stereo_on_11.yaml"/>
+
+  <param name="use_sim_time" value="true" />
+
+  <!-- 图像解压 -->
+  <node name="left_image_decompress" pkg="image_transport" type="republish"
+        args="compressed in:=/camera/left/image_dehazed raw out:=/camera/left/image_raw" />
+
+  <node name="right_image_decompress" pkg="image_transport" type="republish"
+        args="compressed in:=/camera/right/image_dehazed raw out:=/camera/right/image_raw" />
+
+  <!-- 最小化测试节点 -->
+  <node name="stereo_minimal" pkg="orb_slam3_ros" type="ros_stereo_minimal" output="screen">
+    <param name="voc_file"      type="string" value="$(arg voc_file)"/>
+    <param name="settings_file" type="string" value="$(arg settings_file)"/>
+  </node>
+</launch>

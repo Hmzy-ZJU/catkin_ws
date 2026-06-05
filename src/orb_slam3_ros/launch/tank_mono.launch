@@ -1,0 +1,42 @@
+<launch>
+  <!-- 允许脚本/命令行覆盖的参数 -->
+  <arg name="voc_file"
+       default="$(find orb_slam3_ros)/orb_slam3/Vocabulary/ORBvoc.txt.bin"/>
+
+  <!-- Tank 默认配置 -->
+  <arg name="settings_file"
+       default="$(find orb_slam3_ros)/config/Monocular/Tank/tank_on_11.yaml"/>
+
+  <!-- 使用仿真时间（bag 播放时必须为 true） -->
+  <param name="use_sim_time" value="true" />
+
+
+  <!-- ===================== 图像解压：compressed → raw ===================== -->
+  <!-- Tank 数据集提供的是 CompressedImage，需要转换为 Image 格式 -->
+  <node name="left_image_decompress"
+        pkg="image_transport"
+        type="republish"
+        args="compressed in:=/camera/left/image_dehazed raw out:=/camera/image_raw"
+        output="screen" />
+
+
+  <!-- ===================== ORB-SLAM3 主节点 ===================== -->
+
+    <node name="orb_slam3" pkg="orb_slam3_ros" type="ros_mono" output="screen">
+    <!-- 词典与配置文件 -->
+    <param name="voc_file"      type="string" value="$(arg voc_file)"/>
+    <param name="settings_file" type="string" value="$(arg settings_file)"/>
+
+    <!-- 坐标系与可视化开关 -->
+    <param name="world_frame_id"  type="string" value="world"/>
+    <param name="cam_frame_id"    type="string" value="camera"/>
+    <param name="enable_pangolin" type="bool"   value="false"/>
+  </node>
+
+
+  <!-- ===================== RViz（可选） ===================== -->
+  <!-- RViz 可选；批量评估时脚本会自动 kill 掉 -->
+  <node name="rviz" pkg="rviz" type="rviz"
+        args="-d $(find orb_slam3_ros)/config/orb_slam3_no_imu.rviz"
+        output="screen" />
+</launch>

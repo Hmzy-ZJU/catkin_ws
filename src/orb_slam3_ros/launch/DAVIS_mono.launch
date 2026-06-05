@@ -1,0 +1,37 @@
+<launch>
+  <!-- 回放 bag 时需要 -->
+  <param name="use_sim_time" value="true"/>
+
+  <!-- ORB-SLAM3 单目主节点 -->
+  <node name="orb_slam3" pkg="orb_slam3_ros" type="ros_mono" output="screen">
+    <!-- 订阅影像：把包里默认的 /camera/image_raw 映射到 DAVIS 左目 -->
+    <remap from="/camera/image_raw" to="/davis_left/image_raw"/>
+
+    <!-- ORB-SLAM3 参数 -->
+    <param name="voc_file"      type="string" value="/home/hmzy/catkin_ws/src/orb_slam3_ros/orb_slam3/Vocabulary/ORBvoc.txt.bin"/>
+    <param name="settings_file" type="string" value="/home/hmzy/catkin_ws/src/orb_slam3_ros/config/Monocular/DAVIS.yaml"/>
+
+    <!-- ROS frame（与原双目一致，方便 hector_trajectory_server） -->
+    <param name="world_frame_id"  type="string" value="world"/>
+    <param name="cam_frame_id"    type="string" value="camera"/>
+    <param name="enable_pangolin" type="bool"   value="true"/>
+  </node>
+
+  <!-- RViz：把内部常见话题名映射到 DAVIS 左目，沿用你现有配置 -->
+  <node name="rviz" pkg="rviz" type="rviz"
+        args="-d $(find orb_slam3_ros)/config/orb_slam3_with_imu.rviz" output="screen">
+    <remap from="/cam0/image_raw"         to="/davis_left/image_raw"/>
+    <remap from="/left/image_raw"         to="/davis_left/image_raw"/>
+    <remap from="/camera/left/image_raw"  to="/davis_left/image_raw"/>
+    <remap from="/camera/image_raw"       to="/davis_left/image_raw"/>
+  </node>
+
+  <!-- 轨迹服务器：单目源建议用 camera 帧 -->
+  <node pkg="hector_trajectory_server" type="hector_trajectory_server"
+        name="trajectory_server_orb_slam3" output="screen" ns="orb_slam3_ros">
+    <param name="target_frame_name" value="world"/>
+    <param name="source_frame_name" value="camera"/>
+    <param name="trajectory_update_rate"  value="20.0"/>
+    <param name="trajectory_publish_rate" value="20.0"/>
+  </node>
+</launch>

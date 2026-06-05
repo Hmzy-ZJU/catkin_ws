@@ -1,0 +1,11 @@
+<launch>
+  <param name="use_sim_time" value="true"/>
+
+  <node name="orb_slam3" pkg="orb_slam3_ros" type="stereo" output="screen">
+    <remap from="/camera/left/image_raw"  to="/davis_left/image_raw"/>
+    <remap from="/camera/right/image_raw" to="/davis_right/image_raw"/>
+    <param name="voc_file"      type="string" value="$(find orb_slam3_ros)/orb_slam3/Vocabulary/ORBvoc.txt.bin"/>
+    <param name="settings_file" type="string" value="$(find orb_slam3_ros)/config/Stereo-Inertial/DAVIS.yaml"/>
+    <param name="enable_pangolin" value="true"/>
+  </node>
+</launch>

@@ -1,0 +1,53 @@
+%YAML:1.0
+
+#--------------------------------------------------------------------------------------------
+# System
+#--------------------------------------------------------------------------------------------
+File.version: "1.0"
+
+#--------------------------------------------------------------------------------------------
+# Camera (Monocular) —— 你的左目参数，键名使用 Camera1.*
+#--------------------------------------------------------------------------------------------
+Camera.type: "PinHole"
+
+Camera1.fx: 339.9013152375
+Camera1.fy: 339.8994042108
+Camera1.cx: 165.5112406158
+Camera1.cy: 125.9886424127
+
+# RadTan: k1 k2 p1 p2（k3 置 0）
+Camera1.k1: -0.3683406749
+Camera1.k2:  0.2389348528
+Camera1.p1:  0.0007707632
+Camera1.p2: -0.0012147090
+Camera1.k3:  0.0
+
+# 图像尺寸 & 帧率
+Camera.width: 346
+Camera.height: 260
+Camera.fps: 20
+Camera.RGB: 0   # DAVIS 灰度
+
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+ORBextractor.nFeatures: 800
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 15
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -1.7
+Viewer.ViewpointZ: 0.8
+Viewer.ViewpointF: -500.0
+Viewer.imageViewScale: 1.0

@@ -1,0 +1,66 @@
+%YAML:1.0
+#--------------------------------------------------------------------------------------------
+# Tank Dataset Stereo Configuration
+# Mode: uwfusion=ON, infosel=OFF, infokf=ON (on_01)
+#--------------------------------------------------------------------------------------------
+
+Camera.type: "PinHole"
+Camera.fx: 655.0
+Camera.fy: 655.0
+Camera.cx: 306.0
+Camera.cy: 256.0
+Camera.k1: 0.0
+Camera.k2: 0.0
+Camera.p1: 0.0
+Camera.p2: 0.0
+Camera.bf: 78.89165891925023
+Camera.width: 612
+Camera.height: 512
+Camera.fps: 20
+Camera.RGB: 0
+ThDepth: 40.0
+
+ORBextractor.nFeatures: 1200
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3
+Viewer.ViewpointX: 0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500
+
+uwfusion.enable: 1
+uwfusion.levels: 4
+uwfusion.scb_percent: 0.6
+uwfusion.bilateral_d: 3
+uwfusion.bilateral_sigma_color: 4.0
+uwfusion.bilateral_sigma_space: 3.5
+uwfusion.clahe_clip: 1.4
+uwfusion.clahe_tile: 8
+uwfusion.exposed_avg: 0.5
+uwfusion.exposed_sigma: 0.25
+
+InfoSelector.Enable: 0
+InfoSelector.TopK: 95
+InfoSelector.UseUniform: 0
+InfoSelector.w_uniform: 0.12
+InfoSelector.MinPxDist: 7
+InfoSelector.LambdaInit: 1.0e-3
+
+InfoKF.Use: 1
+InfoKF.AllowBitsDrop: 1.5
+InfoKF.Dyn.Alpha: 0.25
+InfoKF.Dyn.Beta: 0.0
+InfoKF.Dyn.TauMin: 0.1
+InfoKF.Dyn.TauMax: 5.0
+InfoKF.Cum.Decay: 0.95
+InfoKF.Cum.Thr: 0.5
+InfoKF.MaxFramesForce: 60

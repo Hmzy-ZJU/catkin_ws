@@ -1,0 +1,32 @@
+<launch>
+  <!-- Tank Stereo Launch - Pangolin 完全禁用版本 -->
+  
+  <arg name="voc_file"
+       default="$(find orb_slam3_ros)/orb_slam3/Vocabulary/ORBvoc.txt.bin"/>
+
+  <arg name="settings_file"
+       default="$(find orb_slam3_ros)/config/Stereo/Tank/Tank_stereo_on_11.yaml"/>
+
+  <param name="use_sim_time" value="true" />
+
+  <!-- 图像解压（Tank 数据集使用压缩图像） -->
+  <node name="left_image_decompress" pkg="image_transport" type="republish"
+        args="compressed in:=/camera/left/image_dehazed raw out:=/camera/left/image_raw" />
+
+  <node name="right_image_decompress" pkg="image_transport" type="republish"
+        args="compressed in:=/camera/right/image_dehazed raw out:=/camera/right/image_raw" />
+
+  <!-- ORB-SLAM3 双目节点 -->
+  <node name="orb_slam3" pkg="orb_slam3_ros" type="ros_stereo" output="screen">
+    <param name="voc_file"      type="string" value="$(arg voc_file)"/>
+    <param name="settings_file" type="string" value="$(arg settings_file)"/>
+    <param name="world_frame_id"  type="string" value="world"/>
+    <param name="cam_frame_id"    type="string" value="camera"/>
+    
+    <!-- ★★★ 关键：禁用 Pangolin 可视化 ★★★ -->
+    <param name="enable_pangolin" type="bool" value="false"/>
+  </node>
+
+  <!-- 注意：不启动 RViz 和 trajectory_server，避免可视化相关问题 -->
+  
+</launch>

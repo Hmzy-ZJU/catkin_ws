@@ -1,0 +1,58 @@
+<launch>
+  <!-- 是否使用仿真时间 -->
+  <param name="use_sim_time" value="false"/>
+
+  <!-- ====== 可选参数：在启动时按需覆盖 ====== -->
+  <arg name="enable_fusion"           default="true"/>     <!-- 关闭=完全等价原版 -->
+  <arg name="levels"                  default="4"/>
+  <arg name="scb_percent"             default="0.6"/>
+  <arg name="bilateral_d"             default="3"/>
+  <arg name="bilateral_sigma_color"   default="4.0"/>
+  <arg name="bilateral_sigma_space"   default="3.5"/>
+  <arg name="clahe_clip"              default="1.4"/>
+  <arg name="clahe_tile"              default="8"/>
+  <arg name="exposed_avg"             default="0.5"/>
+  <arg name="exposed_sigma"           default="0.25"/>
+
+  <!-- ====== 主节点：ORB-SLAM3 单目 ====== -->
+  <node name="orb_slam3" pkg="orb_slam3_ros" type="ros_mono" output="screen">
+    <!-- 按数据集修改订阅话题；这里示例是 EuRoC：/cam0/image_raw -->
+    <remap from="/camera/image_raw" to="/cam0/image_raw"/>
+
+    <!-- ORB-SLAM3 必要参数 -->
+    <param name="voc_file"      type="string" value="$(find orb_slam3_ros)/orb_slam3/Vocabulary/ORBvoc.txt.bin"/>
+    <param name="settings_file" type="string" value="$(find orb_slam3_ros)/config/Monocular/EuRoC.yaml"/>
+
+    <!-- ROS 框架参数 -->
+    <param name="world_frame_id"  type="string" value="world"/>
+    <param name="cam_frame_id"    type="string" value="camera"/>
+    <param name="enable_pangolin" type="bool"   value="true"/>
+
+    <!-- ====== 水下图像增强（Ancuti 融合流水线）参数（私有命名空间） ====== -->
+    <!-- 关闭时，节点内部直接回传原图，不做任何处理 -->
+    <param name="uw_fusion/enable"                type="bool"   value="$(arg enable_fusion)"/>
+    <param name="uw_fusion/levels"                type="int"    value="$(arg levels)"/>
+    <param name="uw_fusion/scb_percent"           type="double" value="$(arg scb_percent)"/>
+    <param name="uw_fusion/bilateral_d"           type="int"    value="$(arg bilateral_d)"/>
+    <param name="uw_fusion/bilateral_sigma_color" type="double" value="$(arg bilateral_sigma_color)"/>
+    <param name="uw_fusion/bilateral_sigma_space" type="double" value="$(arg bilateral_sigma_space)"/>
+    <param name="uw_fusion/clahe_clip"            type="double" value="$(arg clahe_clip)"/>
+    <param name="uw_fusion/clahe_tile"            type="int"    value="$(arg clahe_tile)"/>
+    <param name="uw_fusion/exposed_avg"           type="double" value="$(arg exposed_avg)"/>
+    <param name="uw_fusion/exposed_sigma"         type="double" value="$(arg exposed_sigma)"/>
+  </node>
+
+  <!-- 可视化 -->
+  <node name="rviz" pkg="rviz" type="rviz"
+        args="-d $(find orb_slam3_ros)/config/orb_slam3_no_imu.rviz"
+        output="screen"/>
+
+  <!-- 轨迹可视化（可选） -->
+  <node pkg="hector_trajectory_server" type="hector_trajectory_server"
+        name="trajectory_server_orb_slam3" output="screen" ns="orb_slam3_ros">
+    <param name="/target_frame_name"        value="/world"/>
+    <param name="/source_frame_name"        value="/camera"/>
+    <param name="/trajectory_update_rate"   value="20.0"/>
+    <param name="/trajectory_publish_rate"  value="20.0"/>
+  </node>
+</launch>

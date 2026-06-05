@@ -1,0 +1,23 @@
+<launch>
+  <param name="use_sim_time" value="true" />
+
+  <!-- 主节点（注意：Aqualoc 的话题就是 /camera/image_raw，无需 remap） -->
+  <node name="orb_slam3" pkg="orb_slam3_ros" type="ros_mono" output="screen">
+    <param name="voc_file"      type="string" value="$(find orb_slam3_ros)/orb_slam3/Vocabulary/ORBvoc.txt.bin"/>
+    <param name="settings_file" type="string" value="$(find orb_slam3_ros)/config/Monocular/Aqualoc_harbor.yaml"/>
+
+    <!-- TF与可视化 -->
+    <param name="world_frame_id"  type="string" value="world"/>
+    <param name="cam_frame_id"    type="string" value="camera"/>
+    <param name="enable_pangolin" type="bool"   value="true"/>
+
+    <!-- 水下增强（沿用你验证过的更稳参数） -->
+    <param name="uwfusion/enable"                 type="bool"   value="false"/>
+   
+  </node>
+
+  <!-- RViz 可选 -->
+  <node name="rviz" pkg="rviz" type="rviz"
+        args="-d $(find orb_slam3_ros)/config/orb_slam3_no_imu.rviz"
+        output="screen" />
+</launch>

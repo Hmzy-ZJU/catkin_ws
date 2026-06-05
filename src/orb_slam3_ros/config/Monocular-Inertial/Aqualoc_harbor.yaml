@@ -1,0 +1,94 @@
+%YAML:1.0
+
+# Harbor mono-inertial configuration
+# Camera intrinsics: D:\home\catkin_ws-main\harbor\harbor_camera_calib.yaml
+# Camera-IMU extrinsics: D:\home\catkin_ws-main\harbor\harbor_imu_camera_calib.yaml
+# IMU noise model: D:\home\catkin_ws-main\harbor\harbor_imu_noises.yaml
+
+File.version: "1.0"
+
+#==================== Camera Model ====================
+Camera.type: "KannalaBrandt8"
+
+Camera1.fx: 413.32595366566017
+Camera1.fy: 413.70198739483686
+Camera1.cx: 305.9507483284928
+Camera1.cy: 259.4439948946375
+
+Camera1.k1: -0.06125568297136998
+Camera1.k2: -0.003796743395135256
+Camera1.k3: 0.027326634771204592
+Camera1.k4: -0.030296403142887066
+
+Camera.width: 640
+Camera.height: 512
+Camera.fps: 20
+Camera.RGB: 1
+
+#==================== IMU ====================
+# ORB-SLAM3 expects the camera-to-body transform in IMU.T_b_c1.
+IMU.T_b_c1: !!opencv-matrix
+   rows: 4
+   cols: 4
+   dt: f
+   data: [ -0.99978035, 0.0169654, 0.01230552, -0.01719238,
+           0.01210101, -0.01210461, 0.99985351, 0.14944769,
+           0.01711187, 0.9997828, 0.01189665, -0.01915984,
+           0.0, 0.0, 0.0, 1.0 ]
+
+IMU.NoiseGyro: 0.001
+IMU.NoiseAcc: 0.02
+IMU.GyroWalk: 0.00005
+IMU.AccWalk: 0.001
+IMU.Frequency: 200.0
+timeshift_cam_imu: -0.0403806549886
+
+#==================== ORB Extractor ====================
+ORBextractor.nFeatures: 900
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 12
+ORBextractor.minThFAST: 7
+
+#==================== Viewer ====================
+
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0
+#==================== UW-Fusion ====================
+uwfusion.enable: 1
+uwfusion.levels: 4
+uwfusion.scb_percent: 0.6
+uwfusion.bilateral_d: 3
+uwfusion.bilateral_sigma_color: 4.0
+uwfusion.bilateral_sigma_space: 3.5
+uwfusion.clahe_clip: 1.4
+uwfusion.clahe_tile: 8
+uwfusion.exposed_avg: 0.5
+uwfusion.exposed_sigma: 0.25
+
+#==================== InfoSelector ====================
+InfoSelector.Enable: 1
+InfoSelector.TopK: 95
+InfoSelector.UseUniform: 1
+InfoSelector.w_uniform: 0.12
+InfoSelector.MinPxDist: 7
+InfoSelector.LambdaInit: 1.0e-3
+
+#==================== InfoKF ====================
+InfoKF.Use: 1
+InfoKF.AllowBitsDrop: 1.8
+InfoKF.Dyn.Alpha: 0.25
+InfoKF.Dyn.Beta: 0.0
+InfoKF.Dyn.TauMin: 0.1
+InfoKF.Dyn.TauMax: 5.0
+InfoKF.Cum.Decay: 0.95
+InfoKF.Cum.Thr: 0.5
+InfoKF.MaxFramesForce: 60
