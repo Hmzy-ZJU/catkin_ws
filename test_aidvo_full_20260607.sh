@@ -483,6 +483,91 @@ run_evo_case() {
     echo "EVO_SKIP missing matched TUM files" > "$status_file"
     return 0
   fi
+
+  python3 - "$gt_tum" "$est_tum" "$evo_dir" <<'PY' > "$evo_dir/custom_plot_stdout.txt" 2>&1 || echo "custom matplotlib plots failed" >> "$status_file"
+import math
+import os
+import sys
+
+gt_path, est_path, out_dir = sys.argv[1:4]
+
+def read_tum(path):
+    rows = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            p = line.split()
+            if len(p) < 4:
+                continue
+            rows.append((float(p[0]), float(p[1]), float(p[2]), float(p[3])))
+    return rows
+
+gt = read_tum(gt_path)
+est = read_tum(est_path)
+n = min(len(gt), len(est))
+if n < 3:
+    raise SystemExit("not enough matched poses for plotting")
+gt = gt[:n]
+est = est[:n]
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+t = [est[i][0] for i in range(n)]
+gx = [gt[i][1] for i in range(n)]
+gy = [gt[i][2] for i in range(n)]
+gz = [gt[i][3] for i in range(n)]
+ex = [est[i][1] for i in range(n)]
+ey = [est[i][2] for i in range(n)]
+ez = [est[i][3] for i in range(n)]
+err = [math.sqrt((ex[i]-gx[i])**2 + (ey[i]-gy[i])**2 + (ez[i]-gz[i])**2) for i in range(n)]
+
+plt.figure(figsize=(8, 6), dpi=160)
+plt.plot(gx, gy, label="groundtruth", linewidth=2)
+plt.plot(ex, ey, label="estimated", linewidth=1.5)
+plt.axis("equal")
+plt.grid(True, alpha=0.3)
+plt.xlabel("x [m]")
+plt.ylabel("y [m]")
+plt.title("Matched trajectory XY")
+plt.legend()
+plt.tight_layout()
+plt.savefig(os.path.join(out_dir, "matched_trajectory_xy.png"))
+plt.close()
+
+fig = plt.figure(figsize=(8, 6), dpi=160)
+ax = fig.add_subplot(111, projection="3d")
+ax.plot(gx, gy, gz, label="groundtruth", linewidth=2)
+ax.plot(ex, ey, ez, label="estimated", linewidth=1.5)
+ax.set_xlabel("x [m]")
+ax.set_ylabel("y [m]")
+ax.set_zlabel("z [m]")
+ax.set_title("Matched trajectory 3D")
+ax.legend()
+plt.tight_layout()
+plt.savefig(os.path.join(out_dir, "matched_trajectory_3d.png"))
+plt.close()
+
+plt.figure(figsize=(9, 4.5), dpi=160)
+plt.plot(t, err, linewidth=1.5)
+plt.grid(True, alpha=0.3)
+plt.xlabel("time [s]")
+plt.ylabel("position error [m]")
+plt.title("Matched position error")
+plt.tight_layout()
+plt.savefig(os.path.join(out_dir, "matched_position_error.png"))
+plt.close()
+
+with open(os.path.join(out_dir, "custom_plot_metrics.txt"), "w") as f:
+    f.write(f"matched_pairs: {n}\n")
+    f.write(f"mean_position_error_m: {sum(err)/len(err):.6f}\n")
+    f.write(f"rmse_position_error_m: {math.sqrt(sum(e*e for e in err)/len(err)):.6f}\n")
+    f.write(f"max_position_error_m: {max(err):.6f}\n")
+PY
+
   if ! command -v evo_ape >/dev/null 2>&1 || ! command -v evo_rpe >/dev/null 2>&1 || ! command -v evo_traj >/dev/null 2>&1; then
     echo "EVO_SKIP evo tools not found. Install with: pip3 install evo" > "$status_file"
     return 0
