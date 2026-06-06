@@ -1006,7 +1006,10 @@ void Frame::ComputeStereoMatches()
     mvuRight = vector<float>(N, -1.0f);
     mvDepth = vector<float>(N, -1.0f);
 
-    if(N <= 0 || mvKeys.empty() || mvKeysRight.empty())
+    const int nLeft = static_cast<int>(mvKeys.size());
+    const int nRight = static_cast<int>(mvKeysRight.size());
+
+    if(N <= 0 || nLeft <= 0 || nRight <= 0)
         return;
     if(!mpORBextractorLeft || !mpORBextractorRight)
         return;
@@ -1014,7 +1017,7 @@ void Frame::ComputeStereoMatches()
         return;
     if(mDescriptors.empty() || mDescriptorsRight.empty())
         return;
-    if(mDescriptors.rows < N || mDescriptorsRight.rows < static_cast<int>(mvKeysRight.size()))
+    if(mDescriptors.rows < nLeft || mDescriptorsRight.rows < nRight)
         return;
     if(!std::isfinite(mb) || !std::isfinite(mbf) || mb <= 0.0f || mbf <= 0.0f)
         return;
@@ -1028,8 +1031,7 @@ void Frame::ComputeStereoMatches()
     for(int i = 0; i < nRows; ++i)
         vRowIndices[i].reserve(200);
 
-    const int Nr = static_cast<int>(mvKeysRight.size());
-    for(int iR = 0; iR < Nr; ++iR)
+    for(int iR = 0; iR < nRight; ++iR)
     {
         const cv::KeyPoint& kp = mvKeysRight[iR];
         if(kp.octave < 0 || kp.octave >= static_cast<int>(mvScaleFactors.size()))
@@ -1054,9 +1056,9 @@ void Frame::ComputeStereoMatches()
         return;
 
     vector<pair<int, int> > vDistIdx;
-    vDistIdx.reserve(N);
+    vDistIdx.reserve(nLeft);
 
-    for(int iL = 0; iL < N; ++iL)
+    for(int iL = 0; iL < nLeft; ++iL)
     {
         const cv::KeyPoint& kpL = mvKeys[iL];
         const int levelL = kpL.octave;
