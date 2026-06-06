@@ -26,6 +26,8 @@
 #include "ORBmatcher.h"
 #include "GeometricCamera.h"
 
+#include <cmath>
+
 #include <thread>
 #include <include/CameraModels/Pinhole.h>
 #include <include/CameraModels/KannalaBrandt8.h>
@@ -999,6 +1001,222 @@ void Frame::ComputeImageBounds(const cv::Mat &imLeft)
 //         }
 //     }
 // }
+void Frame::ComputeStereoMatches()
+{
+    mvuRight = vector<float>(N, -1.0f);
+    mvDepth = vector<float>(N, -1.0f);
+
+    if(N <= 0 || mvKeys.empty() || mvKeysRight.empty())
+        return;
+    if(!mpORBextractorLeft || !mpORBextractorRight)
+        return;
+    if(mpORBextractorLeft->mvImagePyramid.empty() || mpORBextractorRight->mvImagePyramid.empty())
+        return;
+    if(mDescriptors.empty() || mDescriptorsRight.empty())
+        return;
+    if(mDescriptors.rows < N || mDescriptorsRight.rows < static_cast<int>(mvKeysRight.size()))
+        return;
+    if(!std::isfinite(mb) || !std::isfinite(mbf) || mb <= 0.0f || mbf <= 0.0f)
+        return;
+
+    const int thOrbDist = (ORBmatcher::TH_HIGH + ORBmatcher::TH_LOW) / 2;
+    const int nRows = mpORBextractorLeft->mvImagePyramid[0].rows;
+    if(nRows <= 0)
+        return;
+
+    vector<vector<size_t> > vRowIndices(nRows, vector<size_t>());
+    for(int i = 0; i < nRows; ++i)
+        vRowIndices[i].reserve(200);
+
+    const int Nr = static_cast<int>(mvKeysRight.size());
+    for(int iR = 0; iR < Nr; ++iR)
+    {
+        const cv::KeyPoint& kp = mvKeysRight[iR];
+        if(kp.octave < 0 || kp.octave >= static_cast<int>(mvScaleFactors.size()))
+            continue;
+        if(!std::isfinite(kp.pt.y))
+            continue;
+
+        const float r = 2.0f * mvScaleFactors[kp.octave];
+        const int minr = static_cast<int>(std::floor(kp.pt.y - r));
+        const int maxr = static_cast<int>(std::ceil(kp.pt.y + r));
+        for(int yi = minr; yi <= maxr; ++yi)
+        {
+            if(yi >= 0 && yi < nRows)
+                vRowIndices[yi].push_back(iR);
+        }
+    }
+
+    const float minZ = mb;
+    const float minD = 0.0f;
+    const float maxD = mbf / minZ;
+    if(!std::isfinite(maxD) || maxD <= 0.0f)
+        return;
+
+    vector<pair<int, int> > vDistIdx;
+    vDistIdx.reserve(N);
+
+    for(int iL = 0; iL < N; ++iL)
+    {
+        const cv::KeyPoint& kpL = mvKeys[iL];
+        const int levelL = kpL.octave;
+        const float vL = kpL.pt.y;
+        const float uL = kpL.pt.x;
+
+        if(!std::isfinite(vL) || !std::isfinite(uL))
+            continue;
+        if(levelL < 0 ||
+           levelL >= static_cast<int>(mpORBextractorLeft->mvImagePyramid.size()) ||
+           levelL >= static_cast<int>(mpORBextractorRight->mvImagePyramid.size()) ||
+           levelL >= static_cast<int>(mvInvScaleFactors.size()) ||
+           levelL >= static_cast<int>(mvScaleFactors.size()))
+            continue;
+        if(iL >= mDescriptors.rows)
+            continue;
+
+        const int vL_int = static_cast<int>(std::round(vL));
+        if(vL_int < 0 || vL_int >= nRows)
+            continue;
+
+        const vector<size_t>& vCandidates = vRowIndices[vL_int];
+        if(vCandidates.empty())
+            continue;
+
+        const float minU = uL - maxD;
+        const float maxU = uL - minD;
+        if(maxU < 0.0f)
+            continue;
+
+        int bestDist = ORBmatcher::TH_HIGH;
+        size_t bestIdxR = 0;
+        const cv::Mat dL = mDescriptors.row(iL);
+
+        for(size_t iC = 0; iC < vCandidates.size(); ++iC)
+        {
+            const size_t iR = vCandidates[iC];
+            if(iR >= mvKeysRight.size() || iR >= static_cast<size_t>(mDescriptorsRight.rows))
+                continue;
+
+            const cv::KeyPoint& kpR = mvKeysRight[iR];
+            if(kpR.octave < levelL - 1 || kpR.octave > levelL + 1)
+                continue;
+
+            const float uR = kpR.pt.x;
+            if(!std::isfinite(uR) || uR < minU || uR > maxU)
+                continue;
+
+            const cv::Mat dR = mDescriptorsRight.row(static_cast<int>(iR));
+            const int dist = ORBmatcher::DescriptorDistance(dL, dR);
+            if(dist < bestDist)
+            {
+                bestDist = dist;
+                bestIdxR = iR;
+            }
+        }
+
+        if(bestDist >= thOrbDist || bestIdxR >= mvKeysRight.size())
+            continue;
+
+        const float uR0 = mvKeysRight[bestIdxR].pt.x;
+        if(!std::isfinite(uR0))
+            continue;
+
+        const float scaleFactor = mvInvScaleFactors[levelL];
+        const float scaleduL = std::round(kpL.pt.x * scaleFactor);
+        const float scaledvL = std::round(kpL.pt.y * scaleFactor);
+        const float scaleduR0 = std::round(uR0 * scaleFactor);
+        if(!std::isfinite(scaleduL) || !std::isfinite(scaledvL) || !std::isfinite(scaleduR0))
+            continue;
+
+        const int w = 5;
+        const cv::Mat& pyrLeft = mpORBextractorLeft->mvImagePyramid[levelL];
+        const cv::Mat& pyrRight = mpORBextractorRight->mvImagePyramid[levelL];
+        if(pyrLeft.empty() || pyrRight.empty())
+            continue;
+
+        const int rowStart = static_cast<int>(scaledvL) - w;
+        const int rowEnd = static_cast<int>(scaledvL) + w + 1;
+        const int colStartL = static_cast<int>(scaleduL) - w;
+        const int colEndL = static_cast<int>(scaleduL) + w + 1;
+        if(rowStart < 0 || rowEnd > pyrLeft.rows ||
+           colStartL < 0 || colEndL > pyrLeft.cols)
+            continue;
+
+        const cv::Mat IL = pyrLeft.rowRange(rowStart, rowEnd).colRange(colStartL, colEndL);
+
+        int bestDistCorr = INT_MAX;
+        int bestincR = 0;
+        const int L = 5;
+        vector<float> vDists(2 * L + 1, FLT_MAX);
+
+        for(int incR = -L; incR <= L; ++incR)
+        {
+            const int colStartR = static_cast<int>(scaleduR0) + incR - w;
+            const int colEndR = static_cast<int>(scaleduR0) + incR + w + 1;
+            if(rowStart < 0 || rowEnd > pyrRight.rows ||
+               colStartR < 0 || colEndR > pyrRight.cols)
+                continue;
+
+            const cv::Mat IR = pyrRight.rowRange(rowStart, rowEnd).colRange(colStartR, colEndR);
+            const float dist = cv::norm(IL, IR, cv::NORM_L1);
+            vDists[L + incR] = dist;
+            if(dist < bestDistCorr)
+            {
+                bestDistCorr = static_cast<int>(dist);
+                bestincR = incR;
+            }
+        }
+
+        if(bestincR == -L || bestincR == L)
+            continue;
+        if(!std::isfinite(vDists[L + bestincR - 1]) ||
+           !std::isfinite(vDists[L + bestincR]) ||
+           !std::isfinite(vDists[L + bestincR + 1]))
+            continue;
+
+        const float dist1 = vDists[L + bestincR - 1];
+        const float dist2 = vDists[L + bestincR];
+        const float dist3 = vDists[L + bestincR + 1];
+        const float denom = 2.0f * (dist1 + dist3 - 2.0f * dist2);
+        if(std::fabs(denom) < 1e-6f)
+            continue;
+
+        const float deltaR = (dist1 - dist3) / denom;
+        if(deltaR < -1.0f || deltaR > 1.0f || !std::isfinite(deltaR))
+            continue;
+
+        float bestuR = mvScaleFactors[levelL] * (scaleduR0 + static_cast<float>(bestincR) + deltaR);
+        float disparity = uL - bestuR;
+        if(disparity >= minD && disparity < maxD)
+        {
+            if(disparity <= 0.0f)
+            {
+                disparity = 0.01f;
+                bestuR = uL - 0.01f;
+            }
+            mvDepth[iL] = mbf / disparity;
+            mvuRight[iL] = bestuR;
+            vDistIdx.push_back(pair<int, int>(bestDistCorr, iL));
+        }
+    }
+
+    if(vDistIdx.empty())
+        return;
+
+    sort(vDistIdx.begin(), vDistIdx.end());
+    const float median = vDistIdx[vDistIdx.size() / 2].first;
+    const float thDist = 1.5f * 1.4f * median;
+
+    for(int i = static_cast<int>(vDistIdx.size()) - 1; i >= 0; --i)
+    {
+        if(vDistIdx[i].first < thDist)
+            break;
+        mvuRight[vDistIdx[i].second] = -1;
+        mvDepth[vDistIdx[i].second] = -1;
+    }
+}
+
+#if 0
 // =====================================================
 // Frame.cc 补丁 - 修复 ComputeStereoMatches() 中的边界检查问题
 // 
@@ -1010,6 +1228,20 @@ void Frame::ComputeStereoMatches()
 {
     mvuRight = vector<float>(N,-1.0f);
     mvDepth = vector<float>(N,-1.0f);
+
+    if(N <= 0 || mvKeys.empty() || mvKeysRight.empty())
+        return;
+
+    if(mDescriptors.empty() || mDescriptorsRight.empty())
+        return;
+
+    if(mDescriptors.rows < N || mDescriptorsRight.rows < static_cast<int>(mvKeysRight.size()))
+        return;
+
+    if(!mpORBextractorLeft || !mpORBextractorRight ||
+       mpORBextractorLeft->mvImagePyramid.empty() ||
+       mpORBextractorRight->mvImagePyramid.empty())
+        return;
 
     const int thOrbDist = (ORBmatcher::TH_HIGH+ORBmatcher::TH_LOW)/2;
 
@@ -1030,7 +1262,15 @@ void Frame::ComputeStereoMatches()
     for(int iR=0; iR<Nr; iR++)
     {
         const cv::KeyPoint &kp = mvKeysRight[iR];
+        if(kp.octave < 0 ||
+           kp.octave >= static_cast<int>(mpORBextractorRight->mvImagePyramid.size()) ||
+           kp.octave >= static_cast<int>(mvScaleFactors.size()))
+            continue;
+
         const float &kpY = kp.pt.y;
+        if(!std::isfinite(kpY))
+            continue;
+
         const float r = 2.0f*mvScaleFactors[mvKeysRight[iR].octave];
         const int maxr = ceil(kpY+r);
         const int minr = floor(kpY-r);
@@ -1059,6 +1299,16 @@ void Frame::ComputeStereoMatches()
         const float &vL = kpL.pt.y;
         const float &uL = kpL.pt.x;
 
+        if(!std::isfinite(vL) || !std::isfinite(uL))
+            continue;
+
+        if(levelL < 0 ||
+           levelL >= static_cast<int>(mpORBextractorLeft->mvImagePyramid.size()) ||
+           levelL >= static_cast<int>(mpORBextractorRight->mvImagePyramid.size()) ||
+           levelL >= static_cast<int>(mvInvScaleFactors.size()) ||
+           levelL >= static_cast<int>(mvScaleFactors.size()))
+            continue;
+
         // ★★★ 修复 Bug 2：将 vL 转换为 int 并检查边界 ★★★
         const int vL_int = static_cast<int>(vL);
         if(vL_int < 0 || vL_int >= nRows)
@@ -1084,6 +1334,9 @@ void Frame::ComputeStereoMatches()
         for(size_t iC=0; iC<vCandidates.size(); iC++)
         {
             const size_t iR = vCandidates[iC];
+            if(iR >= static_cast<size_t>(mDescriptorsRight.rows))
+                continue;
+
             const cv::KeyPoint &kpR = mvKeysRight[iR];
 
             if(kpR.octave<levelL-1 || kpR.octave>levelL+1)
@@ -1107,8 +1360,14 @@ void Frame::ComputeStereoMatches()
         // Subpixel match by correlation
         if(bestDist<thOrbDist)
         {
+            if(iL >= mDescriptors.rows || bestIdxR >= static_cast<size_t>(mDescriptorsRight.rows))
+                continue;
+
             // coordinates in image pyramid at keypoint scale
             const float uR0 = mvKeysRight[bestIdxR].pt.x;
+            if(!std::isfinite(uR0))
+                continue;
+
             const float scaleFactor = mvInvScaleFactors[kpL.octave];
             const float scaleduL = round(kpL.pt.x*scaleFactor);
             const float scaledvL = round(kpL.pt.y*scaleFactor);
@@ -1220,6 +1479,8 @@ void Frame::ComputeStereoMatches()
         }
     }
 }
+
+#endif
 
 void Frame::ComputeStereoFromRGBD(const cv::Mat &imDepth)
 {
