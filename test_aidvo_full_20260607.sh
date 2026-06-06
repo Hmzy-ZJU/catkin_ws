@@ -3,6 +3,8 @@ set -o pipefail
 
 # Full UW-AIDVO dataset and ablation runner.
 # Runs EuRoC, Tank, and Harbor with AIDVO off/fixed/rule.
+# EuRoC/Tank run mono, stereo, mono-inertial, stereo-inertial.
+# Harbor is monocular + IMU only, so it runs mono and mono-inertial.
 #
 # Ubuntu usage:
 #   cd ~/catkin_ws
@@ -13,8 +15,11 @@ set -o pipefail
 #   BAG_DURATION=30 bash test_aidvo_full_20260607.sh
 #   AIDVO_MODES=off,fixed,rule bash test_aidvo_full_20260607.sh
 #   ONLY_DATASET=tank ONLY_SENSOR=stereo bash test_aidvo_full_20260607.sh
-#   RUN_ALL_BAGS=1 bash test_aidvo_full_20260607.sh
+#   RUN_ALL_BAGS=0 bash test_aidvo_full_20260607.sh
 #   RUN_EVO=0 bash test_aidvo_full_20260607.sh
+#   DRY_RUN_MATRIX=1 bash test_aidvo_full_20260607.sh
+#   RUNS_PER_CASE=1 bash test_aidvo_full_20260607.sh
+#   MIN_TRAJECTORY_COMPLETENESS=80 bash test_aidvo_full_20260607.sh
 #   EUROC_GT_FILE=/path/to/groundtruth.csv bash test_aidvo_full_20260607.sh
 
 if [ -z "$WS" ]; then WS="$HOME/catkin_ws"; fi
@@ -23,8 +28,13 @@ if [ -z "$BUILD_TOOL" ]; then BUILD_TOOL=auto; fi
 if [ -z "$AIDVO_MODES" ]; then AIDVO_MODES="off fixed rule"; fi
 AIDVO_MODES="$(printf '%s' "$AIDVO_MODES" | tr ',' ' ')"
 if [ -z "$BAG_DURATION" ]; then BAG_DURATION=0; fi
-if [ -z "$RUN_ALL_BAGS" ]; then RUN_ALL_BAGS=0; fi
+if [ -z "$RUN_ALL_BAGS" ]; then RUN_ALL_BAGS=1; fi
 if [ -z "$RUN_EVO" ]; then RUN_EVO=1; fi
+if [ -z "$DRY_RUN_MATRIX" ]; then DRY_RUN_MATRIX=0; fi
+if [ -z "$RUNS_PER_CASE" ]; then RUNS_PER_CASE=3; fi
+if [ -z "$MIN_TRAJECTORY_POSES" ]; then MIN_TRAJECTORY_POSES=20; fi
+if [ -z "$MIN_TRAJECTORY_COMPLETENESS" ]; then MIN_TRAJECTORY_COMPLETENESS=1; fi
+if [ -z "$MIN_EVO_PAIRS" ]; then MIN_EVO_PAIRS=20; fi
 if [ -z "$TANK_MONO_INERTIAL_MIN_DURATION" ]; then TANK_MONO_INERTIAL_MIN_DURATION=120; fi
 if [ -z "$BAG_RATE" ]; then BAG_RATE=1.0; fi
 if [ -z "$RUN_TIMEOUT" ]; then RUN_TIMEOUT=7200; fi
@@ -618,7 +628,7 @@ PY
 
 summary_header() {
   local file="$1"
-  echo "dataset,sensor,aidvo_mode,bag,status,exit_code,elapsed_sec,played_duration_sec,result_dir,adaptive_csv,trajectory_file,roslaunch_log,validation,adaptive_rows,output_hz,trajectory_poses,trajectory_hz,trajectory_completeness_percent,idps_frames,avg_candidates,avg_selected,avg_selection_ratio,avg_tracked_map_points,mean_tracking_time_ms,kappa_unique,tau0_unique,evo_pairs,evo_dir,ate_rmse_m,rpe_rmse_m" > "$file"
+  echo "dataset,sensor,aidvo_mode,bag,run_id,status,exit_code,elapsed_sec,played_duration_sec,result_dir,adaptive_csv,trajectory_file,roslaunch_log,validation,adaptive_rows,output_hz,trajectory_poses,trajectory_hz,trajectory_completeness_percent,idps_frames,avg_candidates,avg_selected,avg_selection_ratio,avg_tracked_map_points,mean_tracking_time_ms,kappa_unique,tau0_unique,evo_pairs,evo_dir,ate_rmse_m,rpe_rmse_m" > "$file"
 }
 
 read_eval_value() {
@@ -636,6 +646,10 @@ except Exception:
 PY
 }
 
+num_lt() {
+  awk -v a="${1:-0}" -v b="${2:-0}" 'BEGIN { exit !((a + 0) < (b + 0)) }'
+}
+
 validate_behavior() {
   local mode="$1"
   local launch_log="$2"
@@ -644,7 +658,7 @@ validate_behavior() {
   local notes=""
   local expected_switch="YES"
   local expected_policy="Fixed"
-  local kappa_unique tau0_unique output_hz completeness
+  local kappa_unique tau0_unique output_hz completeness trajectory_poses evo_pairs
 
   if [ "$mode" = "off" ]; then expected_switch="NO"; fi
   if [ "$mode" = "rule" ]; then expected_policy="RuleBased"; fi
@@ -664,7 +678,19 @@ validate_behavior() {
     tau0_unique="$(read_eval_value "$eval_csv" tau0_unique)"
     output_hz="$(read_eval_value "$eval_csv" output_hz)"
     completeness="$(read_eval_value "$eval_csv" trajectory_completeness_percent)"
-    notes="$notes output_hz=${output_hz} completeness=${completeness}% kappa_unique=${kappa_unique} tau0_unique=${tau0_unique}"
+    trajectory_poses="$(read_eval_value "$eval_csv" trajectory_poses)"
+    evo_pairs="$(read_eval_value "$eval_csv" evo_pairs)"
+    notes="$notes output_hz=${output_hz} completeness=${completeness}% trajectory_poses=${trajectory_poses} evo_pairs=${evo_pairs} kappa_unique=${kappa_unique} tau0_unique=${tau0_unique}"
+
+    if num_lt "${trajectory_poses:-0}" "$MIN_TRAJECTORY_POSES"; then
+      errors="$errors insufficient_trajectory_poses"
+    fi
+    if num_lt "${completeness:-0}" "$MIN_TRAJECTORY_COMPLETENESS"; then
+      errors="$errors low_trajectory_completeness"
+    fi
+    if num_lt "${evo_pairs:-0}" "$MIN_EVO_PAIRS"; then
+      errors="$errors insufficient_evo_pairs"
+    fi
 
     if [ "$mode" = "off" ] || [ "$mode" = "fixed" ]; then
       if [ "${kappa_unique:-0}" -gt 1 ] || [ "${tau0_unique:-0}" -gt 1 ]; then
@@ -691,11 +717,13 @@ append_summary_from_eval() {
   local sensor="$3"
   local mode="$4"
   local bag="$5"
-  local status="$6"
-  local exit_code="$7"
-  local elapsed="$8"
-  local played_duration="$9"
+  local run_id="$6"
+  local status="$7"
+  local exit_code="$8"
+  local elapsed="$9"
   shift 9
+  local played_duration="$1"
+  shift 1
   local run_dir="$1"
   local adaptive_csv="$2"
   local trajectory_file="$3"
@@ -704,7 +732,7 @@ append_summary_from_eval() {
   local eval_csv="$run_dir/evaluation_metrics.csv"
 
   write_csv_row "$file" \
-    "$dataset" "$sensor" "$mode" "$bag" "$status" "$exit_code" "$elapsed" "$played_duration" \
+    "$dataset" "$sensor" "$mode" "$bag" "$run_id" "$status" "$exit_code" "$elapsed" "$played_duration" \
     "$run_dir" "$adaptive_csv" "$trajectory_file" "$launch_log" "$validation" \
     "$(read_eval_value "$eval_csv" adaptive_rows)" \
     "$(read_eval_value "$eval_csv" output_hz)" \
@@ -731,12 +759,14 @@ run_case() {
   local launch_name="$3"
   local base_config="$4"
   local mode="$5"
-  local root override bag ran
+  local root override bag ran run_id
 
   root="$(dataset_root "$dataset")"
   override="$(bag_override "$dataset")"
   if [ -n "$override" ]; then
-    run_case_one "$dataset" "$sensor" "$launch_name" "$base_config" "$mode" "$override"
+    for run_id in $(seq 1 "$RUNS_PER_CASE"); do
+      run_case_one "$dataset" "$sensor" "$launch_name" "$base_config" "$mode" "$override" "$run_id"
+    done
     return $?
   fi
 
@@ -745,15 +775,21 @@ run_case() {
     while IFS= read -r bag; do
       [ -n "$bag" ] || continue
       ran=1
-      run_case_one "$dataset" "$sensor" "$launch_name" "$base_config" "$mode" "$bag"
+      for run_id in $(seq 1 "$RUNS_PER_CASE"); do
+        run_case_one "$dataset" "$sensor" "$launch_name" "$base_config" "$mode" "$bag" "$run_id"
+      done
     done < <(all_bags "$root")
     if [ "$ran" = "0" ]; then
-      run_case_one "$dataset" "$sensor" "$launch_name" "$base_config" "$mode" ""
+      for run_id in $(seq 1 "$RUNS_PER_CASE"); do
+        run_case_one "$dataset" "$sensor" "$launch_name" "$base_config" "$mode" "" "$run_id"
+      done
     fi
     return 0
   fi
 
-  run_case_one "$dataset" "$sensor" "$launch_name" "$base_config" "$mode" "$(first_bag "$root")"
+  for run_id in $(seq 1 "$RUNS_PER_CASE"); do
+    run_case_one "$dataset" "$sensor" "$launch_name" "$base_config" "$mode" "$(first_bag "$root")" "$run_id"
+  done
 }
 
 run_case_one() {
@@ -763,6 +799,7 @@ run_case_one() {
   local base_config="$4"
   local mode="$5"
   local forced_bag="$6"
+  local run_id="$7"
   local root bag bag_name dataset_results run_dir adaptive_csv launch_log generated_config
   local start end elapsed exit_code status validation case_duration played_duration save_prefix traj_file gt_file
 
@@ -773,24 +810,24 @@ run_case_one() {
 
   if [ ! -f "$bag" ]; then
     log "[SKIP] missing bag for $dataset: $bag"
-    write_csv_row "$dataset_results/summary_${dataset}.csv" "$dataset" "$sensor" "$mode" "$bag" "SKIP" "0" "0" "0" "" "" "" "" "missing_bag" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
-    write_csv_row "$GLOBAL_SUMMARY" "$dataset" "$sensor" "$mode" "$bag" "SKIP" "0" "0" "0" "" "" "" "" "missing_bag" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+    write_csv_row "$dataset_results/summary_${dataset}.csv" "$dataset" "$sensor" "$mode" "$bag" "$run_id" "SKIP" "0" "0" "0" "" "" "" "" "missing_bag" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+    write_csv_row "$GLOBAL_SUMMARY" "$dataset" "$sensor" "$mode" "$bag" "$run_id" "SKIP" "0" "0" "0" "" "" "" "" "missing_bag" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
     return 0
   fi
   if [ ! -f "$base_config" ]; then
     log "[SKIP] missing config: $base_config"
-    write_csv_row "$dataset_results/summary_${dataset}.csv" "$dataset" "$sensor" "$mode" "$bag" "SKIP" "0" "0" "0" "" "" "" "" "missing_config" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
-    write_csv_row "$GLOBAL_SUMMARY" "$dataset" "$sensor" "$mode" "$bag" "SKIP" "0" "0" "0" "" "" "" "" "missing_config" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+    write_csv_row "$dataset_results/summary_${dataset}.csv" "$dataset" "$sensor" "$mode" "$bag" "$run_id" "SKIP" "0" "0" "0" "" "" "" "" "missing_config" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+    write_csv_row "$GLOBAL_SUMMARY" "$dataset" "$sensor" "$mode" "$bag" "$run_id" "SKIP" "0" "0" "0" "" "" "" "" "missing_config" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
     return 0
   fi
 
   bag_name="$(basename "$bag" .bag)"
-  run_dir="$dataset_results/$mode/$sensor/$bag_name"
+  run_dir="$dataset_results/$mode/$sensor/$bag_name/run_${run_id}"
   mkdir -p "$run_dir"
   adaptive_csv="$run_dir/adaptive_frames.csv"
   launch_log="$run_dir/roslaunch.log"
   generated_config="$run_dir/settings_${mode}.yaml"
-  save_prefix="aidvo_full_${dataset}_${sensor}_${mode}_${bag_name}"
+  save_prefix="aidvo_full_${dataset}_${sensor}_${mode}_${bag_name}_r${run_id}"
   traj_file="$run_dir/${save_prefix}_cam_traj.txt"
   rm -f "$adaptive_csv" "$launch_log" "$traj_file"
   prepare_aidvo_config "$base_config" "$generated_config" "$adaptive_csv" "$mode" || return 1
@@ -803,7 +840,7 @@ run_case_one() {
   played_duration="$(case_play_duration "$bag" "$case_duration")"
 
   log "============================================================"
-  log "[RUN] dataset=$dataset sensor=$sensor aidvo_mode=$mode"
+  log "[RUN] dataset=$dataset sensor=$sensor aidvo_mode=$mode run_id=$run_id"
   log "[RUN] bag=$bag"
   log "[RUN] launch=$launch_name"
   log "[RUN] config=$generated_config"
@@ -874,10 +911,10 @@ run_case_one() {
       status="VALIDATION_FAIL"
     fi
   fi
-  append_summary_from_eval "$dataset_results/summary_${dataset}.csv" "$dataset" "$sensor" "$mode" "$bag" "$status" "$exit_code" "$elapsed" "$played_duration" "$run_dir" "$adaptive_csv" "$traj_file" "$launch_log" "$validation"
-  append_summary_from_eval "$GLOBAL_SUMMARY" "$dataset" "$sensor" "$mode" "$bag" "$status" "$exit_code" "$elapsed" "$played_duration" "$run_dir" "$adaptive_csv" "$traj_file" "$launch_log" "$validation"
+  append_summary_from_eval "$dataset_results/summary_${dataset}.csv" "$dataset" "$sensor" "$mode" "$bag" "$run_id" "$status" "$exit_code" "$elapsed" "$played_duration" "$run_dir" "$adaptive_csv" "$traj_file" "$launch_log" "$validation"
+  append_summary_from_eval "$GLOBAL_SUMMARY" "$dataset" "$sensor" "$mode" "$bag" "$run_id" "$status" "$exit_code" "$elapsed" "$played_duration" "$run_dir" "$adaptive_csv" "$traj_file" "$launch_log" "$validation"
 
-  log "[RESULT] dataset=$dataset sensor=$sensor mode=$mode status=$status elapsed=$elapsed"
+  log "[RESULT] dataset=$dataset sensor=$sensor mode=$mode run_id=$run_id status=$status elapsed=$elapsed"
   log "[EVAL] output_hz=$(read_eval_value "$run_dir/evaluation_metrics.csv" output_hz) trajectory_hz=$(read_eval_value "$run_dir/evaluation_metrics.csv" trajectory_hz) completeness=$(read_eval_value "$run_dir/evaluation_metrics.csv" trajectory_completeness_percent)%"
 }
 
@@ -886,12 +923,128 @@ unsupported_case() {
   local sensor="$2"
   local mode="$3"
   local reason="$4"
+  local root override bag ran run_id
+
+  root="$(dataset_root "$dataset")"
+  override="$(bag_override "$dataset")"
+  if [ -n "$override" ]; then
+    for run_id in $(seq 1 "$RUNS_PER_CASE"); do
+      unsupported_case_one "$dataset" "$sensor" "$mode" "$override" "$run_id" "$reason"
+    done
+    return 0
+  fi
+
+  if [ "$RUN_ALL_BAGS" = "1" ]; then
+    ran=0
+    while IFS= read -r bag; do
+      [ -n "$bag" ] || continue
+      ran=1
+      for run_id in $(seq 1 "$RUNS_PER_CASE"); do
+        unsupported_case_one "$dataset" "$sensor" "$mode" "$bag" "$run_id" "$reason"
+      done
+    done < <(all_bags "$root")
+    if [ "$ran" = "0" ]; then
+      for run_id in $(seq 1 "$RUNS_PER_CASE"); do
+        unsupported_case_one "$dataset" "$sensor" "$mode" "" "$run_id" "$reason"
+      done
+    fi
+    return 0
+  fi
+
+  for run_id in $(seq 1 "$RUNS_PER_CASE"); do
+    unsupported_case_one "$dataset" "$sensor" "$mode" "$(first_bag "$root")" "$run_id" "$reason"
+  done
+}
+
+unsupported_case_one() {
+  local dataset="$1"
+  local sensor="$2"
+  local mode="$3"
+  local bag="$4"
+  local run_id="$5"
+  local reason="$6"
   local root dataset_results
+
   root="$(dataset_root "$dataset")"
   dataset_results="$root/results/aidvo_full_${RUN_TAG}"
   mkdir -p "$dataset_results"
-  write_csv_row "$dataset_results/summary_${dataset}.csv" "$dataset" "$sensor" "$mode" "" "UNSUPPORTED" "0" "0" "0" "" "" "" "" "$reason" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
-  write_csv_row "$GLOBAL_SUMMARY" "$dataset" "$sensor" "$mode" "" "UNSUPPORTED" "0" "0" "0" "" "" "" "" "$reason" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+  write_csv_row "$dataset_results/summary_${dataset}.csv" "$dataset" "$sensor" "$mode" "$bag" "$run_id" "UNSUPPORTED" "0" "0" "0" "" "" "" "" "$reason" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+  write_csv_row "$GLOBAL_SUMMARY" "$dataset" "$sensor" "$mode" "$bag" "$run_id" "UNSUPPORTED" "0" "0" "0" "" "" "" "" "$reason" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+}
+
+matrix_bags_for_dataset() {
+  local dataset="$1"
+  local root override bag ran
+  root="$(dataset_root "$dataset")"
+  override="$(bag_override "$dataset")"
+  if [ -n "$override" ]; then
+    echo "$override"
+    return 0
+  fi
+  if [ "$RUN_ALL_BAGS" = "1" ]; then
+    ran=0
+    while IFS= read -r bag; do
+      [ -n "$bag" ] || continue
+      ran=1
+      echo "$bag"
+    done < <(all_bags "$root")
+    if [ "$ran" = "0" ]; then echo ""; fi
+    return 0
+  fi
+  first_bag "$root"
+}
+
+dry_run_matrix() {
+  local tmp_file="$GLOBAL_RESULT_ROOT/dry_run_matrix.csv"
+  local run_id
+  echo "dataset,sensor,aidvo_mode,bag,run_id,support,launch_or_reason,config" > "$tmp_file"
+
+  while IFS='|' read -r dataset sensor launch_name base_config; do
+    [ -z "$dataset" ] && continue
+    if [ -n "$ONLY_DATASET" ] && [ "$dataset" != "$ONLY_DATASET" ]; then continue; fi
+    if [ -n "$ONLY_SENSOR" ] && [ "$sensor" != "$ONLY_SENSOR" ]; then continue; fi
+    while IFS= read -r bag; do
+      for mode in $AIDVO_MODES; do
+        for run_id in $(seq 1 "$RUNS_PER_CASE"); do
+          write_csv_row "$tmp_file" "$dataset" "$sensor" "$mode" "$bag" "$run_id" "SUPPORTED" "$launch_name" "$base_config"
+        done
+      done
+    done < <(matrix_bags_for_dataset "$dataset")
+  done <<CASES
+euroc|mono|euroc_mono.launch|$WS/src/orb_slam3_ros/config/Monocular/EuRoc/EuRoc_on_11.yaml
+euroc|stereo|euroc_stereo.launch|$WS/src/orb_slam3_ros/config/Stereo/EuRoC.yaml
+euroc|mono-inertial|euroc_mono_inertial.launch|$WS/src/orb_slam3_ros/config/Monocular-Inertial/EuRoC.yaml
+euroc|stereo-inertial|euroc_stereo_inertial.launch|$WS/src/orb_slam3_ros/config/Stereo-Inertial/EuRoC.yaml
+tank|mono|tank_mono.launch|$WS/src/orb_slam3_ros/config/Monocular/Tank/tank_on_11.yaml
+tank|stereo|tank_stereo.launch|$WS/src/orb_slam3_ros/config/Stereo/Tank/Tank_stereo_on_11.yaml
+tank|mono-inertial|tank_mono_inertial.launch|$WS/src/orb_slam3_ros/config/Monocular-Inertial/Tank/tank_on_11.yaml
+tank|stereo-inertial|tank_stereo_inertial.launch|$WS/src/orb_slam3_ros/config/Stereo-Inertial/Tank_stereo_inertial_on_11.yaml
+harbor|mono|aqualoc_harbor_mono.launch|$WS/src/orb_slam3_ros/config/Monocular/Aquacular_harbor/all/Aqualoc_harbor_on_11.yaml
+harbor|mono-inertial|aqualoc_harbor_mono_inertial.launch|$WS/src/orb_slam3_ros/config/Monocular-Inertial/Aqualoc_harbor.yaml
+CASES
+
+  python3 - "$tmp_file" <<'PY'
+import csv
+import os
+import sys
+from collections import Counter
+rows = list(csv.DictReader(open(sys.argv[1], newline="")))
+print(f"Dry-run matrix CSV: {sys.argv[1]}")
+print(f"Total rows: {len(rows)}")
+print("Support counts:")
+for key, value in sorted(Counter(r["support"] for r in rows).items()):
+    print(f"  {key}: {value}")
+print("Dataset/sensor counts:")
+for key, value in sorted(Counter((r["dataset"], r["sensor"]) for r in rows).items()):
+    print(f"  {key[0]}/{key[1]}: {value}")
+missing = [r for r in rows if r["support"] == "SUPPORTED" and (not r["bag"] or not os.path.isfile(r["bag"]) or not os.path.isfile(r["config"]))]
+if missing:
+    print("Missing supported inputs:")
+    for r in missing[:50]:
+        print(f"  {r['dataset']}/{r['sensor']}/{r['aidvo_mode']} bag={r['bag']} config={r['config']}")
+    if len(missing) > 50:
+        print(f"  ... {len(missing) - 50} more")
+PY
 }
 
 build_workspace() {
@@ -930,6 +1083,10 @@ preflight() {
   log "BAG_DURATION=$BAG_DURATION"
   log "RUN_ALL_BAGS=$RUN_ALL_BAGS"
   log "RUN_EVO=$RUN_EVO"
+  log "RUNS_PER_CASE=$RUNS_PER_CASE"
+  log "MIN_TRAJECTORY_POSES=$MIN_TRAJECTORY_POSES"
+  log "MIN_TRAJECTORY_COMPLETENESS=$MIN_TRAJECTORY_COMPLETENESS"
+  log "MIN_EVO_PAIRS=$MIN_EVO_PAIRS"
   log "TANK_MONO_INERTIAL_MIN_DURATION=$TANK_MONO_INERTIAL_MIN_DURATION"
   log "GLOBAL_RESULT_ROOT=$GLOBAL_RESULT_ROOT"
   cd "$WS" || return 1
@@ -957,6 +1114,16 @@ init_summaries() {
 }
 
 main() {
+  if [ "$DRY_RUN_MATRIX" = "1" ]; then
+    log "DRY_RUN_MATRIX=1"
+    log "WS=$WS"
+    log "RUN_ALL_BAGS=$RUN_ALL_BAGS"
+    log "AIDVO_MODES=$AIDVO_MODES"
+    log "RUNS_PER_CASE=$RUNS_PER_CASE"
+    dry_run_matrix
+    exit 0
+  fi
+
   preflight || exit 1
   init_summaries
 
@@ -984,22 +1151,10 @@ harbor|mono|aqualoc_harbor_mono.launch|$WS/src/orb_slam3_ros/config/Monocular/Aq
 harbor|mono-inertial|aqualoc_harbor_mono_inertial.launch|$WS/src/orb_slam3_ros/config/Monocular-Inertial/Aqualoc_harbor.yaml
 CASES
 
-  while IFS='|' read -r dataset sensor reason; do
-    [ -z "$dataset" ] && continue
-    if [ -n "$ONLY_DATASET" ] && [ "$dataset" != "$ONLY_DATASET" ]; then continue; fi
-    if [ -n "$ONLY_SENSOR" ] && [ "$sensor" != "$ONLY_SENSOR" ]; then continue; fi
-    for mode in $AIDVO_MODES; do
-      unsupported_case "$dataset" "$sensor" "$mode" "$reason"
-    done
-  done <<'UNSUPPORTED'
-harbor|stereo|no existing stereo launch/config/script for Harbor in this project
-harbor|stereo-inertial|no existing stereo-inertial launch/config/script for Harbor in this project
-UNSUPPORTED
-
   log "============================================================"
   log "test_aidvo_full_20260607 finished"
   log "Global summary: $GLOBAL_SUMMARY"
-  python3 - "$GLOBAL_SUMMARY" <<'PY'
+python3 - "$GLOBAL_SUMMARY" <<'PY'
 import csv
 import sys
 from collections import Counter
@@ -1008,6 +1163,10 @@ counter = Counter(r["status"] for r in rows)
 print("Status counts:")
 for key in sorted(counter):
     print(f"  {key}: {counter[key]}")
+print("Matrix counts:")
+for key, value in sorted(Counter((r["dataset"], r["sensor"]) for r in rows).items()):
+    print(f"  {key[0]}/{key[1]}: {value}")
+print(f"Total rows: {len(rows)}")
 PY
   log "============================================================"
 }
