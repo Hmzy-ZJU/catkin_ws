@@ -161,6 +161,7 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
 
     // 转换为灰度图（ORB-SLAM3 需要灰度图输入）
     cv::Mat imLeftGray, imRightGray;
+    cv::Mat imLeftGray, imRightGray;
     if (imLeft.channels() == 3) {
         cv::cvtColor(imLeft, imLeftGray, cv::COLOR_BGR2GRAY);
     } else {
