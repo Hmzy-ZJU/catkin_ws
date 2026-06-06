@@ -21,6 +21,7 @@ if [ -z "$BUILD_TOOL" ]; then BUILD_TOOL=auto; fi
 if [ -z "$AIDVO_MODES" ]; then AIDVO_MODES="off fixed rule"; fi
 AIDVO_MODES="$(printf '%s' "$AIDVO_MODES" | tr ',' ' ')"
 if [ -z "$BAG_DURATION" ]; then BAG_DURATION=0; fi
+if [ -z "$TANK_MONO_INERTIAL_MIN_DURATION" ]; then TANK_MONO_INERTIAL_MIN_DURATION=120; fi
 if [ -z "$BAG_RATE" ]; then BAG_RATE=1.0; fi
 if [ -z "$RUN_TIMEOUT" ]; then RUN_TIMEOUT=3600; fi
 if [ -z "$STARTUP_WAIT" ]; then STARTUP_WAIT=8; fi
@@ -93,6 +94,10 @@ bag_override() {
 first_bag() {
   [ -d "$1/data" ] || return 0
   find "$1/data" -maxdepth 1 -type f -name "*.bag" | sort | head -n 1
+}
+
+duration_less_than() {
+  awk -v a="$1" -v b="$2" 'BEGIN { exit !((a + 0) > 0 && (a + 0) < (b + 0)) }'
 }
 
 expected_switch() {
@@ -235,12 +240,13 @@ run_case() {
   local script_rel="$3"
   local mode="$4"
   local root bag script bag_name result_dir adaptive_csv launch_log
-  local start end elapsed exit_code status validation
+  local start end elapsed exit_code status validation case_bag_duration
 
   root="$(dataset_root "$dataset")"
   bag="$(bag_override "$dataset")"
   if [ -z "$bag" ]; then bag="$(first_bag "$root")"; fi
   script="$WS/$script_rel"
+  case_bag_duration="$BAG_DURATION"
 
   if [ ! -f "$script" ]; then
     log "[SKIP] missing script: $script"
@@ -258,15 +264,21 @@ run_case() {
   adaptive_csv="$result_dir/adaptive_frames.csv"
   launch_log="$result_dir/roslaunch.log"
 
+  if [ "$dataset" = "tank" ] && [ "$sensor" = "mono-inertial" ] && \
+     duration_less_than "$case_bag_duration" "$TANK_MONO_INERTIAL_MIN_DURATION"; then
+    case_bag_duration="$TANK_MONO_INERTIAL_MIN_DURATION"
+  fi
+
   log "============================================================"
   log "[RUN] dataset=$dataset sensor=$sensor mode=$mode"
   log "[RUN] bag=$bag"
   log "[RUN] script=$script"
+  log "[RUN] bag_duration=$case_bag_duration"
   log "[RUN] result_dir=$result_dir"
   log "============================================================"
 
   start="$(date +%s)"
-  timeout --preserve-status "$RUN_TIMEOUT" env WS="$WS" AIDVO_MODE="$mode" BAG_FILE="$bag" BAG_DURATION="$BAG_DURATION" BAG_RATE="$BAG_RATE" STARTUP_WAIT="$STARTUP_WAIT" ENABLE_ADAPTIVE_LOGGING="$ENABLE_ADAPTIVE_LOGGING" RUN_ALL_BAGS=0 bash "$script" < /dev/null
+  timeout --preserve-status "$RUN_TIMEOUT" env WS="$WS" AIDVO_MODE="$mode" BAG_FILE="$bag" BAG_DURATION="$case_bag_duration" BAG_RATE="$BAG_RATE" STARTUP_WAIT="$STARTUP_WAIT" ENABLE_ADAPTIVE_LOGGING="$ENABLE_ADAPTIVE_LOGGING" RUN_ALL_BAGS=0 bash "$script" < /dev/null
   exit_code=$?
   end="$(date +%s)"
   elapsed="$((end - start))"
@@ -293,6 +305,7 @@ preflight() {
   log "TEST_ROOT=$TEST_ROOT"
   log "AIDVO_MODES=$AIDVO_MODES"
   log "BAG_DURATION=$BAG_DURATION"
+  log "TANK_MONO_INERTIAL_MIN_DURATION=$TANK_MONO_INERTIAL_MIN_DURATION"
   log "RUN_TIMEOUT=$RUN_TIMEOUT"
   log "BUILD_TOOL=$BUILD_TOOL"
 
