@@ -1672,13 +1672,20 @@ Sophus::SE3f Tracking::GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat 
     // 双目模式，注意跟两个相机模式区分开
     //* step 2 初始化mCurrentFrame
     // 在这里提取了左目和右目的特征点，并得出了匹配关系，然后根据双目模型计算出了每个特征点的深度mvDepth
-    if (mSensor == System::STEREO && !mpCamera2)
+    const bool useTwoCameraStereo =
+        mpCamera && mpCamera2 &&
+        mpCamera->GetType() == GeometricCamera::CAM_FISHEYE &&
+        mpCamera2->GetType() == GeometricCamera::CAM_FISHEYE;
+
+    // ORB-SLAM3's two-camera stereo constructor assumes fisheye cameras and
+    // lapping areas. Pinhole stereo must use the classic rectified path.
+    if (mSensor == System::STEREO && !useTwoCameraStereo)
         mCurrentFrame = Frame(mImGray,imGrayRight,timestamp,mpORBextractorLeft,mpORBextractorRight,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,mpCamera);
-    else if(mSensor == System::STEREO && mpCamera2)
+    else if(mSensor == System::STEREO && useTwoCameraStereo)
         mCurrentFrame = Frame(mImGray,imGrayRight,timestamp,mpORBextractorLeft,mpORBextractorRight,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,mpCamera,mpCamera2,mTlr);
-    else if(mSensor == System::IMU_STEREO && !mpCamera2)
+    else if(mSensor == System::IMU_STEREO && !useTwoCameraStereo)
         mCurrentFrame = Frame(mImGray,imGrayRight,timestamp,mpORBextractorLeft,mpORBextractorRight,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,mpCamera,&mLastFrame,*mpImuCalib);
-    else if(mSensor == System::IMU_STEREO && mpCamera2)
+    else if(mSensor == System::IMU_STEREO && useTwoCameraStereo)
         mCurrentFrame = Frame(mImGray,imGrayRight,timestamp,mpORBextractorLeft,mpORBextractorRight,mpORBVocabulary,mK,mDistCoef,mbf,mThDepth,mpCamera,mpCamera2,mTlr,&mLastFrame,*mpImuCalib);
 
     //cout << "Incoming frame ended" << endl;

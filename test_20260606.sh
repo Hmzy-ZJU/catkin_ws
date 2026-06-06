@@ -18,6 +18,7 @@ if [ -z "$WS" ]; then WS="$HOME/catkin_ws"; fi
 if [ -z "$DO_BUILD" ]; then DO_BUILD=1; fi
 if [ -z "$BUILD_TOOL" ]; then BUILD_TOOL=auto; fi
 if [ -z "$AIDVO_MODES" ]; then AIDVO_MODES="off fixed rule"; fi
+AIDVO_MODES="$(printf '%s' "$AIDVO_MODES" | tr ',' ' ')"
 if [ -z "$BAG_DURATION" ]; then BAG_DURATION=0; fi
 if [ -z "$BAG_RATE" ]; then BAG_RATE=1.0; fi
 if [ -z "$RUN_TIMEOUT" ]; then RUN_TIMEOUT=3600; fi

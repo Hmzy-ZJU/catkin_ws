@@ -18,6 +18,15 @@ Camera1.k2: 0.0
 Camera1.p1: 0.0
 Camera1.p2: 0.0
 
+Camera.fx: 655.0
+Camera.fy: 655.0
+Camera.cx: 306.0
+Camera.cy: 256.0
+Camera.k1: 0.0
+Camera.k2: 0.0
+Camera.p1: 0.0
+Camera.p2: 0.0
+
 Camera2.fx: 655.0
 Camera2.fy: 655.0
 Camera2.cx: 306.0
@@ -32,6 +41,7 @@ Camera.height: 512
 Camera.fps: 20
 Camera.RGB: 0
 
+Camera.bf: 78.4916584
 Stereo.ThDepth: 40.0
 Stereo.T_c1_c2: !!opencv-matrix
   rows: 4
