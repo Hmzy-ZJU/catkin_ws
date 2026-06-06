@@ -12,6 +12,7 @@ set -o pipefail
 #   BUILD_TOOL=catkin_make bash test_20260606.sh
 #   BAG_DURATION=60 bash test_20260606.sh
 #   AIDVO_MODES="off fixed rule" bash test_20260606.sh
+#   ONLY_DATASET=euroc ONLY_SENSOR=stereo AIDVO_MODES=rule bash test_20260606.sh
 #   EUROC_BAG=/path/to/MH_01.bag bash test_20260606.sh
 
 if [ -z "$WS" ]; then WS="$HOME/catkin_ws"; fi
@@ -344,7 +345,11 @@ preflight() {
 
 print_plan() {
   log "Dataset plan:"
+  if [ -n "$ONLY_DATASET" ] || [ -n "$ONLY_SENSOR" ]; then
+    log "  filters: ONLY_DATASET=${ONLY_DATASET:-all} ONLY_SENSOR=${ONLY_SENSOR:-all}"
+  fi
   for dataset in euroc tank harbor archaeo cave; do
+    if [ -n "$ONLY_DATASET" ] && [ "$dataset" != "$ONLY_DATASET" ]; then continue; fi
     root="$(dataset_root "$dataset")"
     bag="$(bag_override "$dataset")"
     if [ -z "$bag" ] && [ -d "$root/data" ]; then bag="$(first_bag "$root")"; fi
@@ -360,6 +365,8 @@ main() {
 
   while IFS='|' read -r dataset sensor script_rel; do
     [ -z "$dataset" ] && continue
+    if [ -n "$ONLY_DATASET" ] && [ "$dataset" != "$ONLY_DATASET" ]; then continue; fi
+    if [ -n "$ONLY_SENSOR" ] && [ "$sensor" != "$ONLY_SENSOR" ]; then continue; fi
     for mode in $AIDVO_MODES; do
       if [ "$mode" != "off" ] && [ "$mode" != "fixed" ] && [ "$mode" != "rule" ]; then
         log "[WARN] invalid mode skipped: $mode"
@@ -384,6 +391,8 @@ CASES
 
   while IFS='|' read -r dataset sensor reason; do
     [ -z "$dataset" ] && continue
+    if [ -n "$ONLY_DATASET" ] && [ "$dataset" != "$ONLY_DATASET" ]; then continue; fi
+    if [ -n "$ONLY_SENSOR" ] && [ "$sensor" != "$ONLY_SENSOR" ]; then continue; fi
     for mode in $AIDVO_MODES; do
       summary_row "$dataset" "$sensor" "$mode" "" "UNSUPPORTED" "0" "0" "" "" "" "$reason"
     done

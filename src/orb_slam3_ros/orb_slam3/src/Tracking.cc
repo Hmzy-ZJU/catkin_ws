@@ -33,6 +33,7 @@
 #endif
 
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <sys/resource.h>   // Getrusage (Linux)
@@ -2637,6 +2638,38 @@ void Tracking::StereoInitialization()
 {
     if(mCurrentFrame.N>500)
     {
+        const bool useTwoCameraInit =
+            mCurrentFrame.Nleft > 0 &&
+            mCurrentFrame.mvLeftToRightMatch.size() >= static_cast<size_t>(mCurrentFrame.Nleft) &&
+            mCurrentFrame.mvStereo3Dpoints.size() >= static_cast<size_t>(mCurrentFrame.Nleft);
+
+        int nInitStereoPoints = 0;
+        if(useTwoCameraInit)
+        {
+            for(int i = 0; i < mCurrentFrame.Nleft; ++i)
+            {
+                if(mCurrentFrame.mvLeftToRightMatch[i] != -1)
+                    ++nInitStereoPoints;
+            }
+        }
+        else
+        {
+            const int nDepths = static_cast<int>(mCurrentFrame.mvDepth.size());
+            for(int i = 0; i < mCurrentFrame.N && i < nDepths; ++i)
+            {
+                const float z = mCurrentFrame.mvDepth[i];
+                if(z > 0.0f && std::isfinite(z))
+                    ++nInitStereoPoints;
+            }
+        }
+
+        if(nInitStereoPoints < 10)
+        {
+            cout << "Stereo initialization skipped: insufficient stereo points ("
+                 << nInitStereoPoints << ")" << endl;
+            return;
+        }
+
         if (mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD)
         {
             if (!mCurrentFrame.mpImuPreintegrated || !mLastFrame.mpImuPreintegrated)
@@ -2677,11 +2710,13 @@ void Tracking::StereoInitialization()
         mpAtlas->AddKeyFrame(pKFini);
 
         // Create MapPoints and asscoiate to KeyFrame
-        if(!mpCamera2){
-            for(int i=0; i<mCurrentFrame.N;i++)
+        int nCreatedMapPoints = 0;
+        if(!useTwoCameraInit){
+            const int nDepths = static_cast<int>(mCurrentFrame.mvDepth.size());
+            for(int i=0; i<mCurrentFrame.N && i<nDepths; i++)
             {
                 float z = mCurrentFrame.mvDepth[i];
-                if(z>0)
+                if(z>0 && std::isfinite(z))
                 {
                     Eigen::Vector3f x3D;
                     mCurrentFrame.UnprojectStereo(i, x3D);
@@ -2693,6 +2728,7 @@ void Tracking::StereoInitialization()
                     mpAtlas->AddMapPoint(pNewMP);
 
                     mCurrentFrame.mvpMapPoints[i]=pNewMP;
+                    ++nCreatedMapPoints;
                 }
             }
         } else{
@@ -2715,9 +2751,13 @@ void Tracking::StereoInitialization()
 
                     mCurrentFrame.mvpMapPoints[i]=pNewMP;
                     mCurrentFrame.mvpMapPoints[rightIndex + mCurrentFrame.Nleft]=pNewMP;
+                    ++nCreatedMapPoints;
                 }
             }
         }
+
+        cout << "Stereo initialization created " << nCreatedMapPoints
+             << " MapPoints from " << nInitStereoPoints << " stereo points" << endl;
 
         Verbose::PrintMess("New Map created with " + to_string(mpAtlas->MapPointsInMap()) + " points", Verbose::VERBOSITY_QUIET);
 
