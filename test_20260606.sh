@@ -90,6 +90,7 @@ bag_override() {
 }
 
 first_bag() {
+  [ -d "$1/data" ] || return 0
   find "$1/data" -maxdepth 1 -type f -name "*.bag" | sort | head -n 1
 }
 

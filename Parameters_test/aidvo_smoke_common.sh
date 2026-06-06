@@ -15,6 +15,53 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || { echo "[ERROR] Missing command: $1"; return 1; }
 }
 
+wait_for_orb_slam3_node() {
+  local launch_pid="$1"
+  local launch_log="$2"
+  local deadline=$((SECONDS + STARTUP_WAIT))
+
+  while [ "${SECONDS}" -lt "${deadline}" ]; do
+    if ! kill -0 "${launch_pid}" >/dev/null 2>&1; then
+      echo "[ERROR] roslaunch exited during startup. See ${launch_log}"
+      tail -n 80 "${launch_log}" || true
+      return 1
+    fi
+    if rosnode list 2>/dev/null | grep -q '^/orb_slam3$'; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  echo "[ERROR] /orb_slam3 did not appear within ${STARTUP_WAIT}s. Bag playback is skipped."
+  echo "[ERROR] See ${launch_log}"
+  tail -n 80 "${launch_log}" || true
+  return 1
+}
+
+wait_for_launch_log_pattern() {
+  local launch_pid="$1"
+  local launch_log="$2"
+  local pattern="$3"
+  local deadline=$((SECONDS + STARTUP_WAIT))
+
+  while [ "${SECONDS}" -lt "${deadline}" ]; do
+    if grep -q "${pattern}" "${launch_log}"; then
+      return 0
+    fi
+    if ! kill -0 "${launch_pid}" >/dev/null 2>&1; then
+      echo "[ERROR] roslaunch exited before expected log appeared: ${pattern}"
+      tail -n 80 "${launch_log}" || true
+      return 1
+    fi
+    sleep 1
+  done
+
+  echo "[ERROR] Missing expected startup log: ${pattern}"
+  echo "[ERROR] See ${launch_log}"
+  tail -n 80 "${launch_log}" || true
+  return 1
+}
+
 prepare_aidvo_config() {
   local base_config="$1"
   local output_config="$2"
@@ -83,11 +130,9 @@ run_aidvo_bag() {
   }
   trap cleanup_aidvo_run EXIT INT TERM
 
-  sleep "${STARTUP_WAIT}"
-  if ! kill -0 "${launch_pid}" >/dev/null 2>&1; then
-    echo "[ERROR] roslaunch exited during startup. See ${launch_log}"
-    return 1
-  fi
+  wait_for_orb_slam3_node "${launch_pid}" "${launch_log}"
+
+  wait_for_launch_log_pattern "${launch_pid}" "${launch_log}" "Adaptive IDVO params loaded"
 
   local play_args=(play "${bag_file}" --clock -r "${BAG_RATE}")
   if [[ "${BAG_DURATION}" != "0" ]]; then
@@ -140,6 +185,7 @@ run_aidvo_dataset() {
   source "${WS}/devel/setup.bash"
   require_command roslaunch
   require_command rosbag
+  require_command rosnode
 
   if [[ -n "${BAG_FILE:-}" ]]; then
     bags=("${BAG_FILE}")

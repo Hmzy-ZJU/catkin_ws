@@ -9,6 +9,7 @@
   <arg name="left_image_raw" default="/camera/left/image_raw"/>
   <arg name="right_image_raw" default="/camera/right/image_raw"/>
   <arg name="imu_topic" default="/imu/data"/>
+  <arg name="enable_rviz" default="true"/>
 
   <param name="use_sim_time" value="true" />
 
@@ -29,4 +30,11 @@
     <remap from="/camera/right/image_raw" to="$(arg right_image_raw)"/>
     <remap from="/imu" to="$(arg imu_topic)"/>
   </node>
+
+  <node name="rviz"
+        pkg="rviz"
+        type="rviz"
+        args="-d $(find orb_slam3_ros)/config/orb_slam3_with_imu.rviz"
+        output="screen"
+        if="$(arg enable_rviz)" />
 </launch>
