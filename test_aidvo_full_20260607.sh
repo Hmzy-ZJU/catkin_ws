@@ -14,6 +14,7 @@ set -o pipefail
 #   AIDVO_MODES=off,fixed,rule bash test_aidvo_full_20260607.sh
 #   ONLY_DATASET=tank ONLY_SENSOR=stereo bash test_aidvo_full_20260607.sh
 #   RUN_ALL_BAGS=1 bash test_aidvo_full_20260607.sh
+#   RUN_EVO=0 bash test_aidvo_full_20260607.sh
 #   EUROC_GT_FILE=/path/to/groundtruth.csv bash test_aidvo_full_20260607.sh
 
 if [ -z "$WS" ]; then WS="$HOME/catkin_ws"; fi
@@ -23,6 +24,7 @@ if [ -z "$AIDVO_MODES" ]; then AIDVO_MODES="off fixed rule"; fi
 AIDVO_MODES="$(printf '%s' "$AIDVO_MODES" | tr ',' ' ')"
 if [ -z "$BAG_DURATION" ]; then BAG_DURATION=0; fi
 if [ -z "$RUN_ALL_BAGS" ]; then RUN_ALL_BAGS=0; fi
+if [ -z "$RUN_EVO" ]; then RUN_EVO=1; fi
 if [ -z "$TANK_MONO_INERTIAL_MIN_DURATION" ]; then TANK_MONO_INERTIAL_MIN_DURATION=120; fi
 if [ -z "$BAG_RATE" ]; then BAG_RATE=1.0; fi
 if [ -z "$RUN_TIMEOUT" ]; then RUN_TIMEOUT=7200; fi
@@ -394,6 +396,7 @@ status = "PASS" if adaptive and (traj or adaptive_span > 0) else "EVAL_WARN"
 ate_rmse = ""
 rpe_rmse = ""
 gt = read_trajectory(gt_file)
+pairs = []
 if gt and traj:
     pairs = associate(gt, traj)
     if len(pairs) >= 3:
@@ -410,6 +413,17 @@ if gt and traj:
                 dg = np.diff(q, axis=0)
                 rpe = de - dg
                 rpe_rmse = f"{math.sqrt(float(np.mean(np.sum(rpe * rpe, axis=1)))):.6f}"
+
+evo_dir = os.path.join(os.path.dirname(out_csv), "evo")
+os.makedirs(evo_dir, exist_ok=True)
+evo_gt_tum = os.path.join(evo_dir, "groundtruth_matched.tum")
+evo_est_tum = os.path.join(evo_dir, "estimated_matched.tum")
+evo_dt = 1.0 / traj_hz if traj_hz > 0 else 0.1
+with open(evo_gt_tum, "w") as f_gt, open(evo_est_tum, "w") as f_est:
+    for i, (est_xyz, gt_xyz) in enumerate(pairs):
+        stamp = i * evo_dt
+        f_est.write(f"{stamp:.9f} {est_xyz[0]:.9f} {est_xyz[1]:.9f} {est_xyz[2]:.9f} 0 0 0 1\n")
+        f_gt.write(f"{stamp:.9f} {gt_xyz[0]:.9f} {gt_xyz[1]:.9f} {gt_xyz[2]:.9f} 0 0 0 1\n")
 
 metrics = {
     "dataset": dataset,
@@ -436,6 +450,10 @@ metrics = {
     "kappa_unique": len(set(kappa)),
     "tau0_unique": len(set(tau0)),
     "gt_file": gt_file if gt_file and os.path.isfile(gt_file) else "",
+    "evo_dir": evo_dir,
+    "evo_pairs": len(pairs),
+    "evo_gt_tum": evo_gt_tum if len(pairs) >= 3 else "",
+    "evo_est_tum": evo_est_tum if len(pairs) >= 3 else "",
     "ate_rmse_m": ate_rmse,
     "rpe_rmse_m": rpe_rmse,
 }
@@ -449,9 +467,38 @@ print(",".join(str(metrics[k]) for k in fields))
 PY
 }
 
+run_evo_case() {
+  local run_dir="$1"
+  local evo_dir="$run_dir/evo"
+  local gt_tum="$evo_dir/groundtruth_matched.tum"
+  local est_tum="$evo_dir/estimated_matched.tum"
+  local status_file="$evo_dir/evo_status.txt"
+
+  mkdir -p "$evo_dir"
+  if [ "$RUN_EVO" != "1" ]; then
+    echo "EVO_DISABLED RUN_EVO=$RUN_EVO" > "$status_file"
+    return 0
+  fi
+  if [ ! -s "$gt_tum" ] || [ ! -s "$est_tum" ]; then
+    echo "EVO_SKIP missing matched TUM files" > "$status_file"
+    return 0
+  fi
+  if ! command -v evo_ape >/dev/null 2>&1 || ! command -v evo_rpe >/dev/null 2>&1 || ! command -v evo_traj >/dev/null 2>&1; then
+    echo "EVO_SKIP evo tools not found. Install with: pip3 install evo" > "$status_file"
+    return 0
+  fi
+
+  export MPLBACKEND=Agg
+  echo "EVO_RUNNING" > "$status_file"
+  evo_ape tum "$gt_tum" "$est_tum" --align --correct_scale --plot --plot_mode xyz --save_results "$evo_dir/evo_ape.zip" --save_plot "$evo_dir/evo_ape_plot.png" > "$evo_dir/evo_ape.txt" 2>&1 || echo "evo_ape failed" >> "$status_file"
+  evo_rpe tum "$gt_tum" "$est_tum" --align --correct_scale --plot --plot_mode xyz --save_results "$evo_dir/evo_rpe.zip" --save_plot "$evo_dir/evo_rpe_plot.png" > "$evo_dir/evo_rpe.txt" 2>&1 || echo "evo_rpe failed" >> "$status_file"
+  evo_traj tum "$est_tum" --ref "$gt_tum" --align --correct_scale --plot --plot_mode xyz --save_plot "$evo_dir/evo_traj_plot.png" > "$evo_dir/evo_traj.txt" 2>&1 || echo "evo_traj failed" >> "$status_file"
+  echo "EVO_DONE" >> "$status_file"
+}
+
 summary_header() {
   local file="$1"
-  echo "dataset,sensor,aidvo_mode,bag,status,exit_code,elapsed_sec,played_duration_sec,result_dir,adaptive_csv,trajectory_file,roslaunch_log,validation,adaptive_rows,output_hz,trajectory_poses,trajectory_hz,trajectory_completeness_percent,idps_frames,avg_candidates,avg_selected,avg_selection_ratio,avg_tracked_map_points,mean_tracking_time_ms,kappa_unique,tau0_unique,ate_rmse_m,rpe_rmse_m" > "$file"
+  echo "dataset,sensor,aidvo_mode,bag,status,exit_code,elapsed_sec,played_duration_sec,result_dir,adaptive_csv,trajectory_file,roslaunch_log,validation,adaptive_rows,output_hz,trajectory_poses,trajectory_hz,trajectory_completeness_percent,idps_frames,avg_candidates,avg_selected,avg_selection_ratio,avg_tracked_map_points,mean_tracking_time_ms,kappa_unique,tau0_unique,evo_pairs,evo_dir,ate_rmse_m,rpe_rmse_m" > "$file"
 }
 
 read_eval_value() {
@@ -552,6 +599,8 @@ append_summary_from_eval() {
     "$(read_eval_value "$eval_csv" mean_tracking_time_ms)" \
     "$(read_eval_value "$eval_csv" kappa_unique)" \
     "$(read_eval_value "$eval_csv" tau0_unique)" \
+    "$(read_eval_value "$eval_csv" evo_pairs)" \
+    "$(read_eval_value "$eval_csv" evo_dir)" \
     "$(read_eval_value "$eval_csv" ate_rmse_m)" \
     "$(read_eval_value "$eval_csv" rpe_rmse_m)"
 }
@@ -604,14 +653,14 @@ run_case_one() {
 
   if [ ! -f "$bag" ]; then
     log "[SKIP] missing bag for $dataset: $bag"
-    write_csv_row "$dataset_results/summary_${dataset}.csv" "$dataset" "$sensor" "$mode" "$bag" "SKIP" "0" "0" "0" "" "" "" "" "missing_bag" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
-    write_csv_row "$GLOBAL_SUMMARY" "$dataset" "$sensor" "$mode" "$bag" "SKIP" "0" "0" "0" "" "" "" "" "missing_bag" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+    write_csv_row "$dataset_results/summary_${dataset}.csv" "$dataset" "$sensor" "$mode" "$bag" "SKIP" "0" "0" "0" "" "" "" "" "missing_bag" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+    write_csv_row "$GLOBAL_SUMMARY" "$dataset" "$sensor" "$mode" "$bag" "SKIP" "0" "0" "0" "" "" "" "" "missing_bag" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
     return 0
   fi
   if [ ! -f "$base_config" ]; then
     log "[SKIP] missing config: $base_config"
-    write_csv_row "$dataset_results/summary_${dataset}.csv" "$dataset" "$sensor" "$mode" "$bag" "SKIP" "0" "0" "0" "" "" "" "" "missing_config" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
-    write_csv_row "$GLOBAL_SUMMARY" "$dataset" "$sensor" "$mode" "$bag" "SKIP" "0" "0" "0" "" "" "" "" "missing_config" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+    write_csv_row "$dataset_results/summary_${dataset}.csv" "$dataset" "$sensor" "$mode" "$bag" "SKIP" "0" "0" "0" "" "" "" "" "missing_config" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+    write_csv_row "$GLOBAL_SUMMARY" "$dataset" "$sensor" "$mode" "$bag" "SKIP" "0" "0" "0" "" "" "" "" "missing_config" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
     return 0
   fi
 
@@ -698,6 +747,7 @@ run_case_one() {
 
   gt_file="$(gt_file_for_case "$dataset" "$root" "$bag")"
   evaluate_case "$dataset" "$sensor" "$mode" "$bag" "$played_duration" "$run_dir" "$adaptive_csv" "$traj_file" "$gt_file" > "$run_dir/evaluation_stdout.txt" || true
+  run_evo_case "$run_dir"
   if [ "$status" = "PASS" ]; then
     validation="$(validate_behavior "$mode" "$launch_log" "$run_dir/evaluation_metrics.csv")"
     if ! echo "$validation" | grep -q '^PASS'; then
@@ -720,8 +770,8 @@ unsupported_case() {
   root="$(dataset_root "$dataset")"
   dataset_results="$root/results/aidvo_full_${RUN_TAG}"
   mkdir -p "$dataset_results"
-  write_csv_row "$dataset_results/summary_${dataset}.csv" "$dataset" "$sensor" "$mode" "" "UNSUPPORTED" "0" "0" "0" "" "" "" "" "$reason" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
-  write_csv_row "$GLOBAL_SUMMARY" "$dataset" "$sensor" "$mode" "" "UNSUPPORTED" "0" "0" "0" "" "" "" "" "$reason" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+  write_csv_row "$dataset_results/summary_${dataset}.csv" "$dataset" "$sensor" "$mode" "" "UNSUPPORTED" "0" "0" "0" "" "" "" "" "$reason" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
+  write_csv_row "$GLOBAL_SUMMARY" "$dataset" "$sensor" "$mode" "" "UNSUPPORTED" "0" "0" "0" "" "" "" "" "$reason" "" "" "" "" "" "" "" "" "" "" "" "" "" "" "" ""
 }
 
 build_workspace() {
@@ -759,6 +809,7 @@ preflight() {
   log "AIDVO_MODES=$AIDVO_MODES"
   log "BAG_DURATION=$BAG_DURATION"
   log "RUN_ALL_BAGS=$RUN_ALL_BAGS"
+  log "RUN_EVO=$RUN_EVO"
   log "TANK_MONO_INERTIAL_MIN_DURATION=$TANK_MONO_INERTIAL_MIN_DURATION"
   log "GLOBAL_RESULT_ROOT=$GLOBAL_RESULT_ROOT"
   cd "$WS" || return 1
