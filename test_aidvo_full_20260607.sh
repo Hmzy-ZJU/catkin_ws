@@ -397,6 +397,7 @@ ate_rmse = ""
 rpe_rmse = ""
 gt = read_trajectory(gt_file)
 pairs = []
+aligned_points = []
 if gt and traj:
     pairs = associate(gt, traj)
     if len(pairs) >= 3:
@@ -405,6 +406,7 @@ if gt and traj:
         aligned = umeyama_align(est_pts, gt_pts)
         if aligned is not None:
             import numpy as np
+            aligned_points = [tuple(map(float, row)) for row in aligned]
             q = np.asarray(gt_pts, dtype=float)
             err = aligned - q
             ate_rmse = f"{math.sqrt(float(np.mean(np.sum(err * err, axis=1)))):.6f}"
@@ -418,12 +420,16 @@ evo_dir = os.path.join(os.path.dirname(out_csv), "evo")
 os.makedirs(evo_dir, exist_ok=True)
 evo_gt_tum = os.path.join(evo_dir, "groundtruth_matched.tum")
 evo_est_tum = os.path.join(evo_dir, "estimated_matched.tum")
+evo_est_aligned_tum = os.path.join(evo_dir, "estimated_aligned.tum")
 evo_dt = 1.0 / traj_hz if traj_hz > 0 else 0.1
-with open(evo_gt_tum, "w") as f_gt, open(evo_est_tum, "w") as f_est:
+with open(evo_gt_tum, "w") as f_gt, open(evo_est_tum, "w") as f_est, open(evo_est_aligned_tum, "w") as f_aligned:
     for i, (est_xyz, gt_xyz) in enumerate(pairs):
         stamp = i * evo_dt
         f_est.write(f"{stamp:.9f} {est_xyz[0]:.9f} {est_xyz[1]:.9f} {est_xyz[2]:.9f} 0 0 0 1\n")
         f_gt.write(f"{stamp:.9f} {gt_xyz[0]:.9f} {gt_xyz[1]:.9f} {gt_xyz[2]:.9f} 0 0 0 1\n")
+        if i < len(aligned_points):
+            ax, ay, az = aligned_points[i]
+            f_aligned.write(f"{stamp:.9f} {ax:.9f} {ay:.9f} {az:.9f} 0 0 0 1\n")
 
 metrics = {
     "dataset": dataset,
@@ -454,6 +460,7 @@ metrics = {
     "evo_pairs": len(pairs),
     "evo_gt_tum": evo_gt_tum if len(pairs) >= 3 else "",
     "evo_est_tum": evo_est_tum if len(pairs) >= 3 else "",
+    "evo_est_aligned_tum": evo_est_aligned_tum if len(aligned_points) >= 3 else "",
     "ate_rmse_m": ate_rmse,
     "rpe_rmse_m": rpe_rmse,
 }
@@ -472,6 +479,7 @@ run_evo_case() {
   local evo_dir="$run_dir/evo"
   local gt_tum="$evo_dir/groundtruth_matched.tum"
   local est_tum="$evo_dir/estimated_matched.tum"
+  local est_aligned_tum="$evo_dir/estimated_aligned.tum"
   local status_file="$evo_dir/evo_status.txt"
 
   mkdir -p "$evo_dir"
@@ -484,7 +492,8 @@ run_evo_case() {
     return 0
   fi
 
-  python3 - "$gt_tum" "$est_tum" "$evo_dir" <<'PY' > "$evo_dir/custom_plot_stdout.txt" 2>&1 || echo "custom matplotlib plots failed" >> "$status_file"
+  if [ ! -s "$est_aligned_tum" ]; then est_aligned_tum="$est_tum"; fi
+  python3 - "$gt_tum" "$est_aligned_tum" "$evo_dir" <<'PY' > "$evo_dir/custom_plot_stdout.txt" 2>&1 || echo "custom matplotlib plots failed" >> "$status_file"
 import math
 import os
 import sys
@@ -525,40 +534,66 @@ ey = [est[i][2] for i in range(n)]
 ez = [est[i][3] for i in range(n)]
 err = [math.sqrt((ex[i]-gx[i])**2 + (ey[i]-gy[i])**2 + (ez[i]-gz[i])**2) for i in range(n)]
 
-plt.figure(figsize=(8, 6), dpi=160)
-plt.plot(gx, gy, label="groundtruth", linewidth=2)
-plt.plot(ex, ey, label="estimated", linewidth=1.5)
-plt.axis("equal")
-plt.grid(True, alpha=0.3)
-plt.xlabel("x [m]")
-plt.ylabel("y [m]")
-plt.title("Matched trajectory XY")
-plt.legend()
-plt.tight_layout()
-plt.savefig(os.path.join(out_dir, "matched_trajectory_xy.png"))
-plt.close()
+def save_plane(name, a_gt, b_gt, a_est, b_est, xlabel, ylabel, title):
+    plt.figure(figsize=(8, 6), dpi=160)
+    plt.plot(a_gt, b_gt, label="groundtruth", linewidth=2)
+    plt.plot(a_est, b_est, label="estimated aligned", linewidth=1.5)
+    plt.axis("equal")
+    plt.grid(True, alpha=0.3)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, name))
+    plt.close()
 
-fig = plt.figure(figsize=(8, 6), dpi=160)
-ax = fig.add_subplot(111, projection="3d")
-ax.plot(gx, gy, gz, label="groundtruth", linewidth=2)
-ax.plot(ex, ey, ez, label="estimated", linewidth=1.5)
-ax.set_xlabel("x [m]")
-ax.set_ylabel("y [m]")
-ax.set_zlabel("z [m]")
-ax.set_title("Matched trajectory 3D")
-ax.legend()
-plt.tight_layout()
-plt.savefig(os.path.join(out_dir, "matched_trajectory_3d.png"))
-plt.close()
+save_plane("matched_trajectory_xy.png", gx, gy, ex, ey, "x [m]", "y [m]", "Aligned trajectory XY")
+save_plane("matched_trajectory_xz.png", gx, gz, ex, ez, "x [m]", "z [m]", "Aligned trajectory XZ")
+save_plane("matched_trajectory_yz.png", gy, gz, ey, ez, "y [m]", "z [m]", "Aligned trajectory YZ")
+
+try:
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+    fig = plt.figure(figsize=(8, 6), dpi=160)
+    ax = fig.add_subplot(111, projection="3d")
+    ax.plot(gx, gy, gz, label="groundtruth", linewidth=2)
+    ax.plot(ex, ey, ez, label="estimated aligned", linewidth=1.5)
+    ax.set_xlabel("x [m]")
+    ax.set_ylabel("y [m]")
+    ax.set_zlabel("z [m]")
+    ax.set_title("Aligned trajectory 3D")
+    ax.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, "matched_trajectory_3d.png"))
+    plt.close()
+except Exception as exc:
+    with open(os.path.join(out_dir, "custom_plot_errors.txt"), "a") as f:
+        f.write(f"3d plot failed: {exc}\n")
 
 plt.figure(figsize=(9, 4.5), dpi=160)
 plt.plot(t, err, linewidth=1.5)
 plt.grid(True, alpha=0.3)
 plt.xlabel("time [s]")
 plt.ylabel("position error [m]")
-plt.title("Matched position error")
+plt.title("Aligned position error")
 plt.tight_layout()
 plt.savefig(os.path.join(out_dir, "matched_position_error.png"))
+plt.close()
+
+plt.figure(figsize=(9, 5), dpi=160)
+plt.plot(t, gx, label="gt x", linewidth=1.5)
+plt.plot(t, ex, label="est x", linewidth=1.2)
+plt.plot(t, gy, label="gt y", linewidth=1.5)
+plt.plot(t, ey, label="est y", linewidth=1.2)
+plt.plot(t, gz, label="gt z", linewidth=1.5)
+plt.plot(t, ez, label="est z", linewidth=1.2)
+plt.grid(True, alpha=0.3)
+plt.xlabel("time [s]")
+plt.ylabel("position [m]")
+plt.title("Aligned position components")
+plt.legend(ncol=3, fontsize=8)
+plt.tight_layout()
+plt.savefig(os.path.join(out_dir, "matched_position_components.png"))
 plt.close()
 
 with open(os.path.join(out_dir, "custom_plot_metrics.txt"), "w") as f:
@@ -575,9 +610,9 @@ PY
 
   export MPLBACKEND=Agg
   echo "EVO_RUNNING" > "$status_file"
-  evo_ape tum "$gt_tum" "$est_tum" --align --correct_scale --plot --plot_mode xyz --save_results "$evo_dir/evo_ape.zip" --save_plot "$evo_dir/evo_ape_plot.png" > "$evo_dir/evo_ape.txt" 2>&1 || echo "evo_ape failed" >> "$status_file"
-  evo_rpe tum "$gt_tum" "$est_tum" --align --correct_scale --plot --plot_mode xyz --save_results "$evo_dir/evo_rpe.zip" --save_plot "$evo_dir/evo_rpe_plot.png" > "$evo_dir/evo_rpe.txt" 2>&1 || echo "evo_rpe failed" >> "$status_file"
-  evo_traj tum "$est_tum" --ref "$gt_tum" --align --correct_scale --plot --plot_mode xyz --save_plot "$evo_dir/evo_traj_plot.png" > "$evo_dir/evo_traj.txt" 2>&1 || echo "evo_traj failed" >> "$status_file"
+  evo_ape tum "$gt_tum" "$est_tum" -a --align --correct_scale -s -v --save_results "$evo_dir/evo_ape.zip" --save_plot "$evo_dir/evo_ape_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_ape.txt" 2>&1 || echo "evo_ape failed" >> "$status_file"
+  evo_rpe tum "$gt_tum" "$est_tum" -a --align --correct_scale -s -v -r trans_part -d 1 -u f --save_results "$evo_dir/evo_rpe.zip" --save_plot "$evo_dir/evo_rpe_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_rpe.txt" 2>&1 || echo "evo_rpe failed" >> "$status_file"
+  evo_traj tum "$est_tum" --ref "$gt_tum" --align --correct_scale --save_plot "$evo_dir/evo_traj_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_traj.txt" 2>&1 || echo "evo_traj failed" >> "$status_file"
   echo "EVO_DONE" >> "$status_file"
 }
 
