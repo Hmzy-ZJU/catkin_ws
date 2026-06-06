@@ -367,11 +367,7 @@ void Tracking::LogAdaptiveFrame(double track_ms)
     if(!(mAdaptiveConfig.enable_logging || mAdaptiveConfig.enable_adaptive_idvo))
         return;
 
-    if(!mAdaptiveStateValid)
-    {
-        mAdaptiveLastState.frame_id = mCurrentFrame.mnId;
-        mAdaptiveLastState.timestamp = mCurrentFrame.mTimeStamp;
-    }
+    EnsureAdaptiveStateForLogging(track_ms);
 
     mAdaptiveLastState.tracking_time_ms = track_ms;
     mAdaptiveLastState.recent_local_ba_time_ms = mRtStats.ba_ms.empty() ? 0.0 : mRtStats.ba_ms.back();
@@ -4251,6 +4247,74 @@ void Tracking::UpdateAdaptiveParamsFromState(const AdaptiveState& state)
             mAdaptiveFixedParams,
             mAdaptiveConfig);
     }
+}
+
+void Tracking::EnsureAdaptiveStateForLogging(double track_ms)
+{
+    if(!(mAdaptiveConfig.enable_logging || mAdaptiveConfig.enable_adaptive_idvo))
+        return;
+
+    std::vector<int> validIndices;
+    validIndices.reserve(mCurrentFrame.N);
+    int trackedPoints = 0;
+    for(int i = 0; i < mCurrentFrame.N; ++i)
+    {
+        MapPoint* pMP = mCurrentFrame.mvpMapPoints[i];
+        const bool isOutlier =
+            i < static_cast<int>(mCurrentFrame.mvbOutlier.size()) &&
+            mCurrentFrame.mvbOutlier[i];
+        if(pMP && !pMP->isBad() && !isOutlier)
+        {
+            validIndices.push_back(i);
+            ++trackedPoints;
+        }
+    }
+
+    int candidateCount = trackedPoints;
+    int selectedCount = trackedPoints;
+    if(mAdaptiveStateValid && mAdaptiveLastState.frame_id == static_cast<int>(mCurrentFrame.mnId))
+    {
+        if(mAdaptiveLastState.candidate_point_number > 0)
+            candidateCount = mAdaptiveLastState.candidate_point_number;
+        if(mAdaptiveLastState.selected_point_number > 0 ||
+           mAdaptiveLastState.candidate_point_number > 0)
+            selectedCount = mAdaptiveLastState.selected_point_number;
+    }
+    else if(!mCurrentFrame.mvInfoSelected.empty())
+    {
+        selectedCount = 0;
+        for(size_t i = 0; i < mCurrentFrame.mvInfoSelected.size(); ++i)
+            if(mCurrentFrame.mvInfoSelected[i])
+                ++selectedCount;
+        if(selectedCount == 0)
+            selectedCount = trackedPoints;
+    }
+
+    candidateCount = std::max(candidateCount, selectedCount);
+    const int inlierCount = mnMatchesInliers > 0 ? mnMatchesInliers : trackedPoints;
+    const double recentBA = mRtStats.ba_ms.empty() ? 0.0 : mRtStats.ba_ms.back();
+    const int nKFsAdaptive = mpAtlas ? static_cast<int>(mpAtlas->KeyFramesInMap()) : 0;
+    const int nMPsAdaptive = mpAtlas ? static_cast<int>(mpAtlas->MapPointsInMap()) : 0;
+    const int kfIntervalAdaptive = static_cast<int>(mCurrentFrame.mnId - mnLastKeyFrameId);
+
+    AdaptiveState state = ORBAdaptiveStateCollector::Collect(
+        mCurrentFrame,
+        mImGray,
+        validIndices,
+        candidateCount,
+        selectedCount,
+        inlierCount,
+        mInfoKFState.H_ref,
+        mInfoKFState.initialized,
+        mInfoKFState.cumDrop,
+        mInfoKFParams.lambdaMean,
+        track_ms,
+        recentBA,
+        nKFsAdaptive,
+        nMPsAdaptive,
+        kfIntervalAdaptive);
+
+    UpdateAdaptiveParamsFromState(state);
 }
 
 InfoSelectParams Tracking::GetCurrentInfoSelectParams() const

@@ -18,6 +18,7 @@ using namespace std;
 static uwfusion::Params gUW;
 static bool gUWLoaded = false;
 static double gCamImuTimeShift = 0.0;
+static int gStereoInertialFrameCount = 0;
 
 static void LoadUWParamsFromYAML(const std::string& settings_file)
 {
@@ -324,7 +325,26 @@ void ImageGrabber::SyncWithImu()
             }
         }
 
-        pSLAM->TrackStereo(imLeft, imRight, tIm, vImuMeas);
+        try
+        {
+            pSLAM->TrackStereo(imLeft, imRight, tIm, vImuMeas);
+        }
+        catch (const cv::Exception& e)
+        {
+            ROS_WARN_THROTTLE(5.0, "[ros_stereo_inertial] TrackStereo OpenCV exception: %s", e.what());
+            continue;
+        }
+        catch (const std::exception& e)
+        {
+            ROS_WARN_THROTTLE(5.0, "[ros_stereo_inertial] TrackStereo exception: %s", e.what());
+            continue;
+        }
+        ++gStereoInertialFrameCount;
+        if (gStereoInertialFrameCount == 1 || gStereoInertialFrameCount % 100 == 0)
+        {
+            ROS_INFO("[ros_stereo_inertial] Processed %d stereo-inertial frames",
+                     gStereoInertialFrameCount);
+        }
         publish_topics(imgLeftMsg->header.stamp, Wbb);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1));

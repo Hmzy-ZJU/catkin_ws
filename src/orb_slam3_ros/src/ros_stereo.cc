@@ -174,8 +174,11 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
 
     // 调用 ORB-SLAM3 跟踪（使用 try-catch 防止边界错误导致崩溃）
     try {
+    try {
         Sophus::SE3f Tcw = pSLAM->TrackStereo(imLeftGray, imRightGray, msg_time.toSec());
     } catch (const cv::Exception& e) {
+        ROS_WARN_THROTTLE(5.0, "[ros_stereo] TrackStereo OpenCV exception: %s", e.what());
+        return;
         // 静默处理边界错误，这些在某些帧是预期的
         return;
     } catch (const std::exception& e) {
@@ -186,7 +189,8 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
     publish_topics(msg_time);
     
     // 每100帧输出一次进度
-    if (frame_count % 100 == 0) {
+    if (frame_count == 1 || frame_count % 100 == 0) {
+    if (frame_count == 1 || frame_count % 100 == 0) {
         ROS_INFO("[ros_stereo] Processed %d frames", frame_count);
     }
 }

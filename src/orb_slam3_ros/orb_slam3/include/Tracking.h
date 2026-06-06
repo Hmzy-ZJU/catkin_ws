@@ -431,6 +431,7 @@ protected:
     void InitializeAdaptiveParams();
     bool IsInfoModuleRuntimeReady() const;
     void UpdateAdaptiveParamsFromState(const AdaptiveState& state);
+    void EnsureAdaptiveStateForLogging(double track_ms);
     InfoSelectParams GetCurrentInfoSelectParams() const;
     InfoKFParams GetCurrentInfoKFParams() const;
 #endif
