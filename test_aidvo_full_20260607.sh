@@ -41,6 +41,8 @@ if [ -z "$MIN_EVO_PAIRS" ]; then MIN_EVO_PAIRS=100; fi
 if [ -z "$TANK_MONO_INERTIAL_MIN_DURATION" ]; then TANK_MONO_INERTIAL_MIN_DURATION=120; fi
 if [ -z "$BAG_RATE" ]; then BAG_RATE=1.0; fi
 if [ -z "$RUN_TIMEOUT" ]; then RUN_TIMEOUT=7200; fi
+if [ -z "$SAVE_TRAJ_TIMEOUT" ]; then SAVE_TRAJ_TIMEOUT=120; fi
+if [ -z "$EVO_TIMEOUT" ]; then EVO_TIMEOUT=180; fi
 if [ -z "$STARTUP_WAIT" ]; then STARTUP_WAIT=8; fi
 if [ -z "$ENABLE_ADAPTIVE_LOGGING" ]; then ENABLE_ADAPTIVE_LOGGING=1; fi
 if [ -z "$RUN_TAG" ]; then RUN_TAG="$(date +%Y%m%d_%H%M%S)"; fi
@@ -659,9 +661,9 @@ PY
 
   export MPLBACKEND=Agg
   echo "EVO_RUNNING" > "$status_file"
-  evo_ape tum "$gt_tum" "$est_tum" -a --align --correct_scale -s -v --save_results "$evo_dir/evo_ape.zip" --save_plot "$evo_dir/evo_ape_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_ape.txt" 2>&1 || echo "evo_ape failed" >> "$status_file"
-  evo_rpe tum "$gt_tum" "$est_tum" -a --align --correct_scale -s -v -r trans_part -d 1 -u f --save_results "$evo_dir/evo_rpe.zip" --save_plot "$evo_dir/evo_rpe_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_rpe.txt" 2>&1 || echo "evo_rpe failed" >> "$status_file"
-  evo_traj tum "$est_tum" --ref "$gt_tum" --align --correct_scale --save_plot "$evo_dir/evo_traj_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_traj.txt" 2>&1 || echo "evo_traj failed" >> "$status_file"
+  timeout --preserve-status "$EVO_TIMEOUT" evo_ape tum "$gt_tum" "$est_tum" -a --align --correct_scale -s -v --save_results "$evo_dir/evo_ape.zip" --save_plot "$evo_dir/evo_ape_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_ape.txt" 2>&1 || echo "evo_ape failed or timed out" >> "$status_file"
+  timeout --preserve-status "$EVO_TIMEOUT" evo_rpe tum "$gt_tum" "$est_tum" -a --align --correct_scale -s -v -r trans_part -d 1 -u f --save_results "$evo_dir/evo_rpe.zip" --save_plot "$evo_dir/evo_rpe_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_rpe.txt" 2>&1 || echo "evo_rpe failed or timed out" >> "$status_file"
+  timeout --preserve-status "$EVO_TIMEOUT" evo_traj tum "$est_tum" --ref "$gt_tum" --align --correct_scale --save_plot "$evo_dir/evo_traj_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_traj.txt" 2>&1 || echo "evo_traj failed or timed out" >> "$status_file"
   echo "EVO_DONE" >> "$status_file"
 }
 
@@ -916,7 +918,7 @@ run_case_one() {
   fi
   sleep 3
   if [ "$exit_code" = "0" ] && rosservice info /orb_slam3/save_traj >/dev/null 2>&1; then
-    rosservice call /orb_slam3/save_traj "$save_prefix" || true
+    timeout --preserve-status "$SAVE_TRAJ_TIMEOUT" rosservice call /orb_slam3/save_traj "$save_prefix" || log "[WARN] save_traj failed or timed out after ${SAVE_TRAJ_TIMEOUT}s"
   fi
   cleanup_case
   trap - EXIT INT TERM
@@ -1043,14 +1045,18 @@ dry_run_matrix() {
   local run_id
   echo "dataset,sensor,aidvo_mode,bag,run_id,support,launch_or_reason,config" > "$tmp_file"
 
-  while IFS='|' read -r dataset sensor launch_name base_config; do
+  while IFS='|' read -r dataset sensor launch_name base_config unsupported_reason; do
     [ -z "$dataset" ] && continue
     if [ -n "$ONLY_DATASET" ] && [ "$dataset" != "$ONLY_DATASET" ]; then continue; fi
     if [ -n "$ONLY_SENSOR" ] && [ "$sensor" != "$ONLY_SENSOR" ]; then continue; fi
     while IFS= read -r bag; do
       for mode in $AIDVO_MODES; do
         for run_id in $(seq 1 "$RUNS_PER_CASE"); do
-          write_csv_row "$tmp_file" "$dataset" "$sensor" "$mode" "$bag" "$run_id" "SUPPORTED" "$launch_name" "$base_config"
+          if [ -n "$unsupported_reason" ]; then
+            write_csv_row "$tmp_file" "$dataset" "$sensor" "$mode" "$bag" "$run_id" "UNSUPPORTED" "$unsupported_reason" "$base_config"
+          else
+            write_csv_row "$tmp_file" "$dataset" "$sensor" "$mode" "$bag" "$run_id" "SUPPORTED" "$launch_name" "$base_config"
+          fi
         done
       done
     done < <(matrix_bags_for_dataset "$dataset")
@@ -1064,7 +1070,9 @@ tank|stereo|tank_stereo.launch|$WS/src/orb_slam3_ros/config/Stereo/Tank/Tank_ste
 tank|mono-inertial|tank_mono_inertial.launch|$WS/src/orb_slam3_ros/config/Monocular-Inertial/Tank/tank_on_11.yaml
 tank|stereo-inertial|tank_stereo_inertial.launch|$WS/src/orb_slam3_ros/config/Stereo-Inertial/Tank_stereo_inertial_on_11.yaml
 harbor|mono|aqualoc_harbor_mono.launch|$WS/src/orb_slam3_ros/config/Monocular/Aquacular_harbor/all/Aqualoc_harbor_on_11.yaml
+harbor|stereo|||unsupported_harbor_has_single_camera_topic
 harbor|mono-inertial|aqualoc_harbor_mono_inertial.launch|$WS/src/orb_slam3_ros/config/Monocular-Inertial/Aqualoc_harbor.yaml
+harbor|stereo-inertial|||unsupported_harbor_has_single_camera_topic
 CASES
 
   python3 - "$tmp_file" <<'PY'
@@ -1129,6 +1137,9 @@ preflight() {
   log "RUN_ALL_BAGS=$RUN_ALL_BAGS"
   log "RUN_EVO=$RUN_EVO"
   log "RUNS_PER_CASE=$RUNS_PER_CASE"
+  log "RUN_TIMEOUT=$RUN_TIMEOUT"
+  log "SAVE_TRAJ_TIMEOUT=$SAVE_TRAJ_TIMEOUT"
+  log "EVO_TIMEOUT=$EVO_TIMEOUT"
   log "MIN_TRAJECTORY_POSES=$MIN_TRAJECTORY_POSES"
   log "MIN_TRAJECTORY_COMPLETENESS=$MIN_TRAJECTORY_COMPLETENESS"
   log "MIN_EVO_PAIRS=$MIN_EVO_PAIRS"
@@ -1173,7 +1184,7 @@ main() {
   preflight || exit 1
   init_summaries
 
-  while IFS='|' read -r dataset sensor launch_name base_config; do
+  while IFS='|' read -r dataset sensor launch_name base_config unsupported_reason; do
     [ -z "$dataset" ] && continue
     if [ -n "$ONLY_DATASET" ] && [ "$dataset" != "$ONLY_DATASET" ]; then continue; fi
     if [ -n "$ONLY_SENSOR" ] && [ "$sensor" != "$ONLY_SENSOR" ]; then continue; fi
@@ -1182,7 +1193,11 @@ main() {
         log "[WARN] invalid mode skipped: $mode"
         continue
       fi
-      run_case "$dataset" "$sensor" "$launch_name" "$base_config" "$mode"
+      if [ -n "$unsupported_reason" ]; then
+        unsupported_case "$dataset" "$sensor" "$mode" "$unsupported_reason"
+      else
+        run_case "$dataset" "$sensor" "$launch_name" "$base_config" "$mode"
+      fi
     done
   done <<CASES
 euroc|mono|euroc_mono.launch|$WS/src/orb_slam3_ros/config/Monocular/EuRoc/EuRoc_on_11.yaml
@@ -1194,7 +1209,9 @@ tank|stereo|tank_stereo.launch|$WS/src/orb_slam3_ros/config/Stereo/Tank/Tank_ste
 tank|mono-inertial|tank_mono_inertial.launch|$WS/src/orb_slam3_ros/config/Monocular-Inertial/Tank/tank_on_11.yaml
 tank|stereo-inertial|tank_stereo_inertial.launch|$WS/src/orb_slam3_ros/config/Stereo-Inertial/Tank_stereo_inertial_on_11.yaml
 harbor|mono|aqualoc_harbor_mono.launch|$WS/src/orb_slam3_ros/config/Monocular/Aquacular_harbor/all/Aqualoc_harbor_on_11.yaml
+harbor|stereo|||unsupported_harbor_has_single_camera_topic
 harbor|mono-inertial|aqualoc_harbor_mono_inertial.launch|$WS/src/orb_slam3_ros/config/Monocular-Inertial/Aqualoc_harbor.yaml
+harbor|stereo-inertial|||unsupported_harbor_has_single_camera_topic
 CASES
 
   log "============================================================"
