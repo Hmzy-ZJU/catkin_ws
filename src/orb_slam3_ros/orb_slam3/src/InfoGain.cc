@@ -112,6 +112,9 @@ Eigen::Matrix<double,6,6> InfoGain::ComputePoseInformation(
     // Add regularization to diagonal
     H += lambda * Eigen::Matrix<double,6,6>::Identity();
 
+    if(!F.HasPose())
+        return H;
+
     // Get camera parameters
     float fx = F.fx;
     float fy = F.fy;

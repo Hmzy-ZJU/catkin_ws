@@ -368,7 +368,30 @@ void Tracking::LogAdaptiveFrame(double track_ms)
     if(!(mAdaptiveConfig.enable_logging || mAdaptiveConfig.enable_adaptive_idvo))
         return;
 
-    EnsureAdaptiveStateForLogging(track_ms);
+    try
+    {
+        EnsureAdaptiveStateForLogging(track_ms);
+    }
+    catch(const cv::Exception& e)
+    {
+        std::cerr << "[AdaptiveIDVO] state collection OpenCV exception: "
+                  << e.what() << std::endl;
+        mAdaptiveLastState = AdaptiveState();
+        mAdaptiveLastState.frame_id = mCurrentFrame.mnId;
+        mAdaptiveLastState.timestamp = mCurrentFrame.mTimeStamp;
+        mAdaptiveLastState.tracking_time_ms = track_ms;
+        mAdaptiveStateValid = true;
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << "[AdaptiveIDVO] state collection exception: "
+                  << e.what() << std::endl;
+        mAdaptiveLastState = AdaptiveState();
+        mAdaptiveLastState.frame_id = mCurrentFrame.mnId;
+        mAdaptiveLastState.timestamp = mCurrentFrame.mTimeStamp;
+        mAdaptiveLastState.tracking_time_ms = track_ms;
+        mAdaptiveStateValid = true;
+    }
 
     mAdaptiveLastState.tracking_time_ms = track_ms;
     mAdaptiveLastState.recent_local_ba_time_ms = mRtStats.ba_ms.empty() ? 0.0 : mRtStats.ba_ms.back();
@@ -4300,6 +4323,21 @@ void Tracking::EnsureAdaptiveStateForLogging(double track_ms)
 {
     if(!(mAdaptiveConfig.enable_logging || mAdaptiveConfig.enable_adaptive_idvo))
         return;
+
+    const bool trackingLost = (mState == LOST || mState == RECENTLY_LOST);
+    if(trackingLost || !mCurrentFrame.HasPose())
+    {
+        mAdaptiveLastState = AdaptiveState();
+        mAdaptiveLastState.frame_id = mCurrentFrame.mnId;
+        mAdaptiveLastState.timestamp = mCurrentFrame.mTimeStamp;
+        mAdaptiveLastState.tracking_time_ms = track_ms;
+        mAdaptiveLastState.recent_local_ba_time_ms = mRtStats.ba_ms.empty() ? 0.0 : mRtStats.ba_ms.back();
+        mAdaptiveLastState.number_of_keyframes = mpAtlas ? static_cast<int>(mpAtlas->KeyFramesInMap()) : 0;
+        mAdaptiveLastState.number_of_map_points = mpAtlas ? static_cast<int>(mpAtlas->MapPointsInMap()) : 0;
+        mAdaptiveLastState.keyframe_interval = static_cast<int>(mCurrentFrame.mnId - mnLastKeyFrameId);
+        mAdaptiveStateValid = true;
+        return;
+    }
 
     std::vector<int> validIndices;
     validIndices.reserve(mCurrentFrame.N);

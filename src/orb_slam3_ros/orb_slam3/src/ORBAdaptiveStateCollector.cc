@@ -247,10 +247,27 @@ AdaptiveState ORBAdaptiveStateCollector::Collect(
     state.image_contrast = ComputeContrast(image);
     state.blur_score = ComputeBlurScore(image);
     state.feature_spatial_entropy = ComputeSpatialEntropy(frame);
-    state.median_reprojection_error = ComputeMedianReprojectionError(frame);
+    try
+    {
+        state.median_reprojection_error = ComputeMedianReprojectionError(frame);
+    }
+    catch(const cv::Exception&)
+    {
+        state.median_reprojection_error = 0.0;
+    }
 
-    const Eigen::Matrix<double,6,6> H =
-        InfoGain::ComputePoseInformation(frame, fim_indices, lambda);
+    Eigen::Matrix<double,6,6> H;
+    H.setIdentity();
+    H *= lambda;
+    try
+    {
+        H = InfoGain::ComputePoseInformation(frame, fim_indices, lambda);
+    }
+    catch(const cv::Exception&)
+    {
+        H.setIdentity();
+        H *= lambda;
+    }
     UpdateFIMMetrics(state, H, H_ref, has_ref, lambda);
     return state;
 }
