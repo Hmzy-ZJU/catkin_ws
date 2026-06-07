@@ -184,7 +184,12 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
     }
     catch(const cv::Exception& e)
     {
-        ROS_WARN_THROTTLE(5.0, "[ros_stereo] TrackStereo OpenCV exception: %s", e.what());
+        ROS_WARN_THROTTLE(5.0,
+            "[ros_stereo] TrackStereo OpenCV exception: %s left=%dx%d right=%dx%d stamp=%.9f",
+            e.what(),
+            imLeftGray.cols, imLeftGray.rows,
+            imRightGray.cols, imRightGray.rows,
+            msg_time.toSec());
         return;
     }
     catch(const std::exception& e)

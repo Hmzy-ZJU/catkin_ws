@@ -9,6 +9,7 @@ robocopy D:\home\catkin_ws-main D:\home\catkin_ws_win_sync /E /XD .git build dev
 
 git status -s
 git diff --stat
+
 ```
 
 ```

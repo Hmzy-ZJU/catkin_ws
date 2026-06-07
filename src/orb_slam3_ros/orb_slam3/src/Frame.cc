@@ -1144,7 +1144,15 @@ void Frame::ComputeStereoMatches()
            colStartL < 0 || colEndL > pyrLeft.cols)
             continue;
 
-        const cv::Mat IL = pyrLeft.rowRange(rowStart, rowEnd).colRange(colStartL, colEndL);
+        cv::Mat IL;
+        try
+        {
+            IL = pyrLeft.rowRange(rowStart, rowEnd).colRange(colStartL, colEndL);
+        }
+        catch(const cv::Exception&)
+        {
+            continue;
+        }
 
         int bestDistCorr = INT_MAX;
         int bestincR = 0;
@@ -1159,7 +1167,15 @@ void Frame::ComputeStereoMatches()
                colStartR < 0 || colEndR > pyrRight.cols)
                 continue;
 
-            const cv::Mat IR = pyrRight.rowRange(rowStart, rowEnd).colRange(colStartR, colEndR);
+            cv::Mat IR;
+            try
+            {
+                IR = pyrRight.rowRange(rowStart, rowEnd).colRange(colStartR, colEndR);
+            }
+            catch(const cv::Exception&)
+            {
+                continue;
+            }
             const float dist = cv::norm(IL, IR, cv::NORM_L1);
             vDists[L + incR] = dist;
             if(dist < bestDistCorr)
@@ -1631,11 +1647,29 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
 
 void Frame::ComputeStereoFishEyeMatches() {
     //Speed it up by matching keypoints in the lapping area
+    monoLeft = std::max(0, std::min(monoLeft, static_cast<int>(mvKeys.size())));
+    monoRight = std::max(0, std::min(monoRight, static_cast<int>(mvKeysRight.size())));
+    if(mDescriptors.empty() || mDescriptorsRight.empty() ||
+       monoLeft < 0 || monoLeft > mDescriptors.rows ||
+       monoRight < 0 || monoRight > mDescriptorsRight.rows)
+        return;
+
     vector<cv::KeyPoint> stereoLeft(mvKeys.begin() + monoLeft, mvKeys.end());
     vector<cv::KeyPoint> stereoRight(mvKeysRight.begin() + monoRight, mvKeysRight.end());
 
-    cv::Mat stereoDescLeft = mDescriptors.rowRange(monoLeft, mDescriptors.rows);
-    cv::Mat stereoDescRight = mDescriptorsRight.rowRange(monoRight, mDescriptorsRight.rows);
+    cv::Mat stereoDescLeft;
+    cv::Mat stereoDescRight;
+    try
+    {
+        stereoDescLeft = mDescriptors.rowRange(monoLeft, mDescriptors.rows);
+        stereoDescRight = mDescriptorsRight.rowRange(monoRight, mDescriptorsRight.rows);
+    }
+    catch(const cv::Exception&)
+    {
+        return;
+    }
+    if(stereoDescLeft.empty() || stereoDescRight.empty())
+        return;
 
     mvLeftToRightMatch = vector<int>(Nleft,-1);
     mvRightToLeftMatch = vector<int>(Nright,-1);
