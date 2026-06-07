@@ -3312,7 +3312,9 @@ bool Tracking::TrackWithMotionModel()
         Verbose::PrintMess("Not enough matches, wider window search!!", Verbose::VERBOSITY_NORMAL);
         fill(mCurrentFrame.mvpMapPoints.begin(),mCurrentFrame.mvpMapPoints.end(),static_cast<MapPoint*>(NULL));
 
-        nmatches = matcher.SearchByProjection(mCurrentFrame,mLastFrame,2*th,mSensor==System::MONOCULAR || mSensor==System::IMU_MONOCULAR);
+        const int widerTh =
+            (mSensor == System::STEREO || mSensor == System::IMU_STEREO) ? 4 * th : 2 * th;
+        nmatches = matcher.SearchByProjection(mCurrentFrame,mLastFrame,widerTh,mSensor==System::MONOCULAR || mSensor==System::IMU_MONOCULAR);
         Verbose::PrintMess("Matches with wider search: " + to_string(nmatches), Verbose::VERBOSITY_NORMAL);
 
     }
@@ -3476,7 +3478,17 @@ bool Tracking::TrackLocalMap()
 
             // --- 稳健下限（可选）---
             // 若过小，保底留一批（避免优化退化/发散）
-            const int minKeep = std::min(std::max(20, frameInfoSelParams.topK / 2), nBefore);
+            int minKeep = std::min(std::max(20, frameInfoSelParams.topK / 2), nBefore);
+            const bool stereoLike =
+                (mSensor == System::STEREO || mSensor == System::IMU_STEREO);
+            if(stereoLike)
+            {
+                const int stereoSafeKeep = std::min(
+                    nBefore,
+                    std::max(frameInfoSelParams.topK,
+                             std::min(260, std::max(180, frameInfoSelParams.topK * 2))));
+                minKeep = std::max(minKeep, stereoSafeKeep);
+            }
             if ((int)selected.size() < minKeep)
             {
                 // 简单补齐：从 cand 前面顺序补（或可按响应 score 再挑）
@@ -3806,6 +3818,16 @@ bool Tracking::NeedNewKeyFrame()
         else
             thRefRatio = 0.90f;
     }
+
+#ifdef ORB3_USE_INFOSEL
+    if(mAdaptiveConfig.enable_adaptive_idvo &&
+       mAdaptiveConfig.policy_type == AdaptivePolicyType::RuleBased)
+    {
+        const float aggressiveness = static_cast<float>(
+            std::max(0.7, std::min(1.3, mAdaptiveCurrentParams.keyframe_aggressiveness)));
+        thRefRatio = std::max(0.35f, std::min(0.98f, thRefRatio * aggressiveness));
+    }
+#endif
 
     // Condition 1a: More than "MaxFrames" have passed from last keyframe insertion
     const bool c1a = mCurrentFrame.mnId>=mnLastKeyFrameId+mMaxFrames;
@@ -4272,7 +4294,16 @@ void Tracking::LoadAdaptiveParams(cv::FileStorage& fSettings)
     mAdaptiveConfig.max_tau0 = std::max(mAdaptiveConfig.min_tau0, mAdaptiveConfig.max_tau0);
     mAdaptiveConfig.smooth_factor = std::max(0.0, std::min(1.0, mAdaptiveConfig.smooth_factor));
 
-    ClampAdaptiveParams(mAdaptiveFixedParams, mAdaptiveConfig);
+    AdaptiveConfig fixedClampConfig = mAdaptiveConfig;
+    fixedClampConfig.min_kappa_top =
+        std::min(fixedClampConfig.min_kappa_top, mAdaptiveFixedParams.kappa_top);
+    fixedClampConfig.max_kappa_top =
+        std::max(fixedClampConfig.max_kappa_top, mAdaptiveFixedParams.kappa_top);
+    fixedClampConfig.min_tau0 =
+        std::min(fixedClampConfig.min_tau0, mAdaptiveFixedParams.tau0);
+    fixedClampConfig.max_tau0 =
+        std::max(fixedClampConfig.max_tau0, mAdaptiveFixedParams.tau0);
+    ClampAdaptiveParams(mAdaptiveFixedParams, fixedClampConfig);
     mAdaptiveCurrentParams = mAdaptiveFixedParams;
     mAdaptiveLogger.Configure(mAdaptiveConfig.enable_logging, mAdaptiveConfig.log_path);
 

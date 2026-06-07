@@ -98,7 +98,7 @@ uwfusion.exposed_avg: 0.5
 uwfusion.exposed_sigma: 0.25
 
 InfoSelector.Enable: 1
-InfoSelector.TopK: 95
+InfoSelector.TopK: 220
 InfoSelector.UseUniform: 1
 InfoSelector.w_uniform: 0.12
 InfoSelector.MinPxDist: 7
@@ -114,3 +114,15 @@ InfoKF.Dyn.TauMax: 5.0
 InfoKF.Cum.Decay: 0.95
 InfoKF.Cum.Thr: 0.5
 InfoKF.MaxFramesForce: 300
+
+# Adaptive IDVO. In inertial modes it starts after IMU initialization.
+EnableAdaptiveIDVO: 0
+AdaptivePolicyType: "Fixed"
+MinKappaTop: 120
+MaxKappaTop: 420
+MinTau0: 0.1
+MaxTau0: 5.0
+TrackingTimeBudget: 30.0
+SmoothFactor: 0.8
+EnableAdaptiveLogging: 0
+AdaptiveLogPath: "adaptive_idvo_stereo_inertial_tank.csv"

@@ -64,8 +64,8 @@ struct AdaptiveConfig
     bool enable_logging = false;
     std::string log_path = "adaptive_idvo_log.csv";
 
-    int min_kappa_top = 80;
-    int max_kappa_top = 400;
+    int min_kappa_top = 120;
+    int max_kappa_top = 420;
     double min_tau0 = 0.01;
     double max_tau0 = 2.0;
     double tracking_time_budget_ms = 30.0;

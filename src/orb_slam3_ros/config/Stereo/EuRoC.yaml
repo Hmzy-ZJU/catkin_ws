@@ -96,7 +96,7 @@ Viewer.imageViewScale: 1.0
 
 # Information-driven point selection and keyframe decision
 InfoSelector.Enable: 1
-InfoSelector.TopK: 95
+InfoSelector.TopK: 220
 InfoSelector.UseUniform: 1
 InfoSelector.w_uniform: 0.12
 InfoSelector.MinPxDist: 7
@@ -115,8 +115,8 @@ InfoKF.MaxFramesForce: 300
 # Adaptive IDVO. Set EnableAdaptiveIDVO to 0 for fixed UW-IDVO behavior.
 EnableAdaptiveIDVO: 0
 AdaptivePolicyType: "Fixed"
-MinKappaTop: 60
-MaxKappaTop: 180
+MinKappaTop: 120
+MaxKappaTop: 420
 MinTau0: 0.1
 MaxTau0: 5.0
 TrackingTimeBudget: 30.0

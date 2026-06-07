@@ -82,6 +82,11 @@ AdaptiveParams RuleBasedAdaptivePolicy::Decide(
         risk += 0.10;
     if(state.tracked_map_points > 0 && state.tracked_map_points < fixed_params.kappa_top / 2)
         risk += 0.10;
+    if(state.feature_spatial_entropy > 0.0 && state.feature_spatial_entropy < 0.55)
+        risk += 0.10;
+    if(state.candidate_point_number > 0 &&
+       state.candidate_point_number < std::max(60, fixed_params.kappa_top))
+        risk += 0.10;
     risk = ClampDouble(risk, 0.0, 1.0);
 
     double overload = 0.0;
@@ -112,7 +117,7 @@ AdaptiveParams RuleBasedAdaptivePolicy::Decide(
         target.keyframe_aggressiveness = 1.0 + 0.5 * risk;
     }
 
-    if(strong_information && overload > 0.0)
+    if(strong_information && overload > 0.0 && risk < 0.15)
     {
         target.kappa_top = fixed_params.kappa_top -
             static_cast<int>(overload * (fixed_params.kappa_top - config.min_kappa_top));
