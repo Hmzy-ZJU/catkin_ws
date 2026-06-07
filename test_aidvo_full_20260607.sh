@@ -13,6 +13,8 @@ set -o pipefail
 # Useful overrides:
 #   DO_BUILD=0 bash test_aidvo_full_20260607.sh
 #   BAG_DURATION=30 bash test_aidvo_full_20260607.sh
+#   BAG_START=60 BAG_DURATION=60 bash test_aidvo_full_20260607.sh
+#   EUROC_BAG_START=60 TANK_BAG_START=30 bash test_aidvo_full_20260607.sh
 #   AIDVO_MODES=off,fixed,rule bash test_aidvo_full_20260607.sh
 #   ONLY_DATASET=tank ONLY_SENSOR=stereo bash test_aidvo_full_20260607.sh
 #   RUN_ALL_BAGS=0 bash test_aidvo_full_20260607.sh
@@ -28,6 +30,7 @@ if [ -z "$BUILD_TOOL" ]; then BUILD_TOOL=auto; fi
 if [ -z "$AIDVO_MODES" ]; then AIDVO_MODES="off fixed rule"; fi
 AIDVO_MODES="$(printf '%s' "$AIDVO_MODES" | tr ',' ' ')"
 if [ -z "$BAG_DURATION" ]; then BAG_DURATION=0; fi
+if [ -z "$BAG_START" ]; then BAG_START=0; fi
 if [ -z "$RUN_ALL_BAGS" ]; then RUN_ALL_BAGS=1; fi
 if [ -z "$RUN_EVO" ]; then RUN_EVO=1; fi
 if [ -z "$DRY_RUN_MATRIX" ]; then DRY_RUN_MATRIX=0; fi
@@ -119,19 +122,33 @@ PY
 case_play_duration() {
   local bag="$1"
   local requested="$2"
+  local start_offset="$3"
   local actual
   actual="$(bag_duration_sec "$bag")"
-  python3 - "$requested" "$actual" <<'PY'
+  python3 - "$requested" "$actual" "$start_offset" <<'PY'
 import sys
 requested = float(sys.argv[1])
 actual = float(sys.argv[2])
+start_offset = max(0.0, float(sys.argv[3]))
+remaining = max(0.0, actual - start_offset) if actual > 0 else 0.0
 if requested <= 0:
-    print(f"{actual:.6f}")
-elif actual > 0:
-    print(f"{min(requested, actual):.6f}")
+    print(f"{remaining:.6f}")
+elif remaining > 0:
+    print(f"{min(requested, remaining):.6f}")
 else:
     print(f"{requested:.6f}")
 PY
+}
+
+case_start_offset() {
+  local dataset="$1"
+  local value=""
+  case "$dataset" in
+    euroc) value="${EUROC_BAG_START:-}" ;;
+    tank) value="${TANK_BAG_START:-}" ;;
+    harbor) value="${HARBOR_BAG_START:-}" ;;
+  esac
+  if [ -n "$value" ]; then echo "$value"; else echo "$BAG_START"; fi
 }
 
 gt_file_for_case() {
@@ -812,7 +829,7 @@ run_case_one() {
   local forced_bag="$6"
   local run_id="$7"
   local root bag bag_name dataset_results run_dir adaptive_csv launch_log generated_config
-  local start end elapsed exit_code status validation case_duration played_duration save_prefix traj_file gt_file
+  local start end elapsed exit_code status validation case_duration case_start played_duration save_prefix traj_file gt_file
 
   root="$(dataset_root "$dataset")"
   bag="$forced_bag"
@@ -844,11 +861,12 @@ run_case_one() {
   prepare_aidvo_config "$base_config" "$generated_config" "$adaptive_csv" "$mode" || return 1
 
   case_duration="$BAG_DURATION"
+  case_start="$(case_start_offset "$dataset")"
   if [ "$dataset" = "tank" ] && [ "$sensor" = "mono-inertial" ] && \
      duration_less_than "$case_duration" "$TANK_MONO_INERTIAL_MIN_DURATION"; then
     case_duration="$TANK_MONO_INERTIAL_MIN_DURATION"
   fi
-  played_duration="$(case_play_duration "$bag" "$case_duration")"
+  played_duration="$(case_play_duration "$bag" "$case_duration" "$case_start")"
 
   log "============================================================"
   log "[RUN] dataset=$dataset sensor=$sensor aidvo_mode=$mode run_id=$run_id"
@@ -856,7 +874,7 @@ run_case_one() {
   log "[RUN] launch=$launch_name"
   log "[RUN] config=$generated_config"
   log "[RUN] result_dir=$run_dir"
-  log "[RUN] bag_duration=$case_duration played_duration_est=$played_duration"
+  log "[RUN] bag_start=$case_start bag_duration=$case_duration played_duration_est=$played_duration"
   log "============================================================"
 
   start="$(date +%s)"
@@ -877,6 +895,7 @@ run_case_one() {
   fi
   if [ "$exit_code" = "0" ]; then
     play_args=(play "$bag" --clock -r "$BAG_RATE")
+    if [ "$case_start" != "0" ] && [ "$case_start" != "0.0" ]; then play_args+=(--start "$case_start"); fi
     if [ "$case_duration" != "0" ]; then play_args+=(--duration "$case_duration"); fi
     timeout --preserve-status "$RUN_TIMEOUT" rosbag "${play_args[@]}"
     exit_code=$?
@@ -1091,6 +1110,7 @@ preflight() {
   log "WS=$WS"
   log "RUN_TAG=$RUN_TAG"
   log "AIDVO_MODES=$AIDVO_MODES"
+  log "BAG_START=$BAG_START"
   log "BAG_DURATION=$BAG_DURATION"
   log "RUN_ALL_BAGS=$RUN_ALL_BAGS"
   log "RUN_EVO=$RUN_EVO"
@@ -1130,6 +1150,7 @@ main() {
     log "WS=$WS"
     log "RUN_ALL_BAGS=$RUN_ALL_BAGS"
     log "AIDVO_MODES=$AIDVO_MODES"
+    log "BAG_START=$BAG_START"
     log "RUNS_PER_CASE=$RUNS_PER_CASE"
     dry_run_matrix
     exit 0
