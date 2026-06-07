@@ -137,11 +137,15 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
     mTimeORB_Ext = std::chrono::duration_cast<std::chrono::duration<double,std::milli> >(time_EndExtORB - time_StartExtORB).count();
 #endif
 
-    Nleft  = mvKeys.size();
-    Nright = mvKeysRight.size();
-    N      = Nleft + Nright;
+    const int nLeftExtracted = static_cast<int>(mvKeys.size());
 
-    if(Nleft == 0)
+    // Rectified pinhole stereo keeps only left-image keypoints in the frame.
+    // Right-image keypoints are used by ComputeStereoMatches() to fill depth
+    // for the left keypoints. They must not be appended to N unless the right
+    // descriptors are also concatenated, as done by the fisheye two-camera path.
+    N = nLeftExtracted;
+
+    if(N == 0)
         return;
 
 
