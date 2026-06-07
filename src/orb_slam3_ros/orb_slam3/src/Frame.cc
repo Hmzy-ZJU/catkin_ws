@@ -1001,7 +1001,7 @@ void Frame::ComputeImageBounds(const cv::Mat &imLeft)
 //         }
 //     }
 // }
-void Frame::ComputeStereoMatches()
+void Frame::ComputeStereoMatches() try
 {
     mvuRight = vector<float>(N, -1.0f);
     mvDepth = vector<float>(N, -1.0f);
@@ -1232,6 +1232,16 @@ void Frame::ComputeStereoMatches()
         mvuRight[vDistIdx[i].second] = -1;
         mvDepth[vDistIdx[i].second] = -1;
     }
+}
+catch(const cv::Exception&)
+{
+    mvuRight = vector<float>(N, -1.0f);
+    mvDepth = vector<float>(N, -1.0f);
+}
+catch(const std::exception&)
+{
+    mvuRight = vector<float>(N, -1.0f);
+    mvDepth = vector<float>(N, -1.0f);
 }
 
 #if 0
@@ -1645,7 +1655,7 @@ Frame::Frame(const cv::Mat &imLeft, const cv::Mat &imRight, const double &timeSt
 
 }
 
-void Frame::ComputeStereoFishEyeMatches() {
+void Frame::ComputeStereoFishEyeMatches() try {
     //Speed it up by matching keypoints in the lapping area
     monoLeft = std::max(0, std::min(monoLeft, static_cast<int>(mvKeys.size())));
     monoRight = std::max(0, std::min(monoRight, static_cast<int>(mvKeysRight.size())));
@@ -1703,6 +1713,16 @@ void Frame::ComputeStereoFishEyeMatches() {
             }
         }
     }
+}
+catch(const cv::Exception&)
+{
+    mvuRight = vector<float>(N, -1.0f);
+    mvDepth = vector<float>(N, -1.0f);
+}
+catch(const std::exception&)
+{
+    mvuRight = vector<float>(N, -1.0f);
+    mvDepth = vector<float>(N, -1.0f);
 }
 
 bool Frame::isInFrustumChecks(MapPoint *pMP, float viewingCosLimit, bool bRight) {
