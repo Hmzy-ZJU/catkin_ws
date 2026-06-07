@@ -16,6 +16,7 @@ git diff --stat
 git add .
 git commit -m "Update catkin workspace from Windows"
 git push origin main
+
 ```
 
 Ubuntu
@@ -26,6 +27,7 @@ git status
 
 git fetch origin
 git diff --name-status HEAD..origin/main
+
 ```
 
 ```
@@ -34,5 +36,6 @@ git pull origin main
 source /opt/ros/noetic/setup.bash
 cd ~/catkin_ws
 catkin build
+
 ```
 

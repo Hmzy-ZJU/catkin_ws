@@ -858,6 +858,8 @@ run_case_one() {
   save_prefix="aidvo_full_${dataset}_${sensor}_${mode}_${bag_name}_r${run_id}"
   traj_file="$run_dir/${save_prefix}_cam_traj.txt"
   rm -f "$adaptive_csv" "$launch_log" "$traj_file"
+  rm -f "$run_dir/${save_prefix}"*
+  rm -f "$ROS_HOME_DIR/${save_prefix}"*
   prepare_aidvo_config "$base_config" "$generated_config" "$adaptive_csv" "$mode" || return 1
 
   case_duration="$BAG_DURATION"

@@ -4,6 +4,8 @@
  */
 
 #include <chrono>
+#include <iomanip>
+#include <iostream>
 
 #include "System.h"
 #include "common.h"
@@ -81,6 +83,7 @@ int main(int argc, char **argv)
     node_handler.param<bool>(node_name + "/enable_pangolin", enable_pangolin, false);
 
     ROS_INFO_STREAM("[ros_stereo] settings_file: " << settings_file);
+    ROS_INFO("[ros_stereo] build_marker: AIDVO_STEREO_20260607_ROW_RANGE_DIAG");
 
     if(!gUW_loaded)
         LoadUWParamsFromYAML(settings_file);
@@ -184,12 +187,18 @@ void ImageGrabber::GrabStereo(const sensor_msgs::ImageConstPtr& msgLeft,
     }
     catch(const cv::Exception& e)
     {
-        ROS_WARN_THROTTLE(5.0,
-            "[ros_stereo] TrackStereo OpenCV exception: %s left=%dx%d right=%dx%d stamp=%.9f",
+        ROS_WARN(
+            "[ros_stereo] TrackStereo OpenCV exception row_range_diag: %s left=%dx%d right=%dx%d stamp=%.9f",
             e.what(),
             imLeftGray.cols, imLeftGray.rows,
             imRightGray.cols, imRightGray.rows,
             msg_time.toSec());
+        std::cerr << "[ros_stereo] TrackStereo OpenCV exception row_range_diag: "
+                  << e.what()
+                  << " left=" << imLeftGray.cols << "x" << imLeftGray.rows
+                  << " right=" << imRightGray.cols << "x" << imRightGray.rows
+                  << " stamp=" << std::fixed << std::setprecision(9) << msg_time.toSec()
+                  << std::endl;
         return;
     }
     catch(const std::exception& e)
