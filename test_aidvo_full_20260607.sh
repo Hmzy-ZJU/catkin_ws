@@ -32,9 +32,9 @@ if [ -z "$RUN_ALL_BAGS" ]; then RUN_ALL_BAGS=1; fi
 if [ -z "$RUN_EVO" ]; then RUN_EVO=1; fi
 if [ -z "$DRY_RUN_MATRIX" ]; then DRY_RUN_MATRIX=0; fi
 if [ -z "$RUNS_PER_CASE" ]; then RUNS_PER_CASE=3; fi
-if [ -z "$MIN_TRAJECTORY_POSES" ]; then MIN_TRAJECTORY_POSES=20; fi
-if [ -z "$MIN_TRAJECTORY_COMPLETENESS" ]; then MIN_TRAJECTORY_COMPLETENESS=1; fi
-if [ -z "$MIN_EVO_PAIRS" ]; then MIN_EVO_PAIRS=20; fi
+if [ -z "$MIN_TRAJECTORY_POSES" ]; then MIN_TRAJECTORY_POSES=100; fi
+if [ -z "$MIN_TRAJECTORY_COMPLETENESS" ]; then MIN_TRAJECTORY_COMPLETENESS=80; fi
+if [ -z "$MIN_EVO_PAIRS" ]; then MIN_EVO_PAIRS=100; fi
 if [ -z "$TANK_MONO_INERTIAL_MIN_DURATION" ]; then TANK_MONO_INERTIAL_MIN_DURATION=120; fi
 if [ -z "$BAG_RATE" ]; then BAG_RATE=1.0; fi
 if [ -z "$RUN_TIMEOUT" ]; then RUN_TIMEOUT=7200; fi
@@ -295,7 +295,7 @@ def normalize_stamp(value):
 def numeric_values(line):
     return [float(x) for x in re.findall(r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?", line)]
 
-def read_trajectory(path):
+def read_trajectory(path, dataset_name="", is_gt=False):
     rows = []
     if not path or not os.path.isfile(path):
         return rows
@@ -311,6 +311,8 @@ def read_trajectory(path):
             try:
                 if len(nums) >= 8:
                     stamp = normalize_stamp(nums[0])
+                    if is_gt and dataset_name == "harbor" and "harbor_colmap_traj_sequence" in os.path.basename(path):
+                        stamp = nums[0] / 20.0
                     xyz = nums[1:4]
                 elif len(nums) == 7:
                     # COLMAP-style rows often contain qx/qy/qz/qw + tx/ty/tz without timestamps.
@@ -339,13 +341,22 @@ def hz_from_times(times):
 def associate(gt, est, max_dt=0.05):
     if not gt or not est:
         return []
-    pairs = []
-    j = 0
-    for et, ex, ey, ez in est:
-        while j + 1 < len(gt) and abs(gt[j + 1][0] - et) <= abs(gt[j][0] - et):
-            j += 1
-        if abs(gt[j][0] - et) <= max_dt:
-            pairs.append(((ex, ey, ez), (gt[j][1], gt[j][2], gt[j][3])))
+    def match(gt_rows, est_rows):
+        pairs = []
+        j = 0
+        for et, ex, ey, ez in est_rows:
+            while j + 1 < len(gt_rows) and abs(gt_rows[j + 1][0] - et) <= abs(gt_rows[j][0] - et):
+                j += 1
+            if abs(gt_rows[j][0] - et) <= max_dt:
+                pairs.append(((ex, ey, ez), (gt_rows[j][1], gt_rows[j][2], gt_rows[j][3])))
+        return pairs
+    pairs = match(gt, est)
+    if len(pairs) < 3:
+        gt0 = gt[0][0]
+        est0 = est[0][0]
+        gt_rel = [(t - gt0, x, y, z) for t, x, y, z in gt]
+        est_rel = [(t - est0, x, y, z) for t, x, y, z in est]
+        pairs = match(gt_rel, est_rel)
     if len(pairs) < 3:
         n = min(len(gt), len(est))
         pairs = [((est[i][1], est[i][2], est[i][3]), (gt[i][1], gt[i][2], gt[i][3])) for i in range(n)]
@@ -378,7 +389,7 @@ def umeyama_align(est_pts, gt_pts):
 adaptive = read_adaptive(adaptive_csv)
 times = [safe_float(r.get("timestamp")) for r in adaptive if safe_float(r.get("timestamp")) > 0]
 output_hz, adaptive_span = hz_from_times(times)
-traj = read_trajectory(traj_file)
+traj = read_trajectory(traj_file, dataset, False)
 traj_times = [r[0] for r in traj]
 traj_hz, traj_span = hz_from_times(traj_times)
 completeness = 0.0
@@ -405,7 +416,7 @@ status = "PASS" if adaptive and (traj or adaptive_span > 0) else "EVAL_WARN"
 
 ate_rmse = ""
 rpe_rmse = ""
-gt = read_trajectory(gt_file)
+gt = read_trajectory(gt_file, dataset, True)
 pairs = []
 aligned_points = []
 if gt and traj:
