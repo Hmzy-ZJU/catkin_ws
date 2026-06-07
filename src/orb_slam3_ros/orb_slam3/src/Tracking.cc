@@ -2110,6 +2110,15 @@ void Tracking::ResetFrameIMU()
 // TODO:关注如何匹配 放在哪
 void Tracking::Track()
 {
+    auto logTrackStageException = [this](const char* stage, const cv::Exception& e)
+    {
+        std::cerr << "[Tracking][TrackStage] frame=" << mCurrentFrame.mnId
+                  << " sensor=" << mSensor
+                  << " state=" << mState
+                  << " stage=" << stage
+                  << " OpenCV exception: " << e.what() << std::endl;
+    };
+
     // 1) 人为步进等待（不计入耗时）
     if (bStepByStep)
     {
@@ -2276,14 +2285,40 @@ void Tracking::Track()
                 if((!mbVelocity && !pCurrentMap->isImuInitialized()) || mCurrentFrame.mnId<mnLastRelocFrameId+2)
                 {
                     Verbose::PrintMess("TRACK: Track with respect to the reference KF ", Verbose::VERBOSITY_DEBUG);
-                    bOK = TrackReferenceKeyFrame();
+                    try
+                    {
+                        bOK = TrackReferenceKeyFrame();
+                    }
+                    catch(const cv::Exception& e)
+                    {
+                        logTrackStageException("TrackReferenceKeyFrame.OK", e);
+                        throw;
+                    }
                 }
                 else
                 {
                     Verbose::PrintMess("TRACK: Track with motion model", Verbose::VERBOSITY_DEBUG);
-                    bOK = TrackWithMotionModel();
+                    try
+                    {
+                        bOK = TrackWithMotionModel();
+                    }
+                    catch(const cv::Exception& e)
+                    {
+                        logTrackStageException("TrackWithMotionModel.OK", e);
+                        throw;
+                    }
                     if(!bOK)
-                        bOK = TrackReferenceKeyFrame();
+                    {
+                        try
+                        {
+                            bOK = TrackReferenceKeyFrame();
+                        }
+                        catch(const cv::Exception& e)
+                        {
+                            logTrackStageException("TrackReferenceKeyFrame.after_motion_fail", e);
+                            throw;
+                        }
+                    }
                 }
 
 
@@ -2331,7 +2366,15 @@ void Tracking::Track()
                     else
                     {
                         // Relocalization
-                        bOK = Relocalization();
+                        try
+                        {
+                            bOK = Relocalization();
+                        }
+                        catch(const cv::Exception& e)
+                        {
+                            logTrackStageException("Relocalization.recently_lost", e);
+                            throw;
+                        }
                         //std::cout << "mCurrentFrame.mTimeStamp:" << to_string(mCurrentFrame.mTimeStamp) << std::endl;
                         //std::cout << "mTimeStampLost:" << to_string(mTimeStampLost) << std::endl;
                         if(mCurrentFrame.mTimeStamp-mTimeStampLost>3.0f && !bOK)
@@ -2372,7 +2415,15 @@ void Tracking::Track()
             {
                 if(mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD)
                     Verbose::PrintMess("IMU. State LOST", Verbose::VERBOSITY_NORMAL);
-                bOK = Relocalization();
+                try
+                {
+                    bOK = Relocalization();
+                }
+                catch(const cv::Exception& e)
+                {
+                    logTrackStageException("Relocalization.only_tracking_lost", e);
+                    throw;
+                }
             }
             else
             {
@@ -2381,11 +2432,27 @@ void Tracking::Track()
                     // In last frame we tracked enough MapPoints in the map
                     if(mbVelocity)
                     {
-                        bOK = TrackWithMotionModel();
+                        try
+                        {
+                            bOK = TrackWithMotionModel();
+                        }
+                        catch(const cv::Exception& e)
+                        {
+                            logTrackStageException("TrackWithMotionModel.only_tracking", e);
+                            throw;
+                        }
                     }
                     else
                     {
-                        bOK = TrackReferenceKeyFrame();
+                        try
+                        {
+                            bOK = TrackReferenceKeyFrame();
+                        }
+                        catch(const cv::Exception& e)
+                        {
+                            logTrackStageException("TrackReferenceKeyFrame.only_tracking", e);
+                            throw;
+                        }
                     }
                 }
                 else
@@ -2403,12 +2470,28 @@ void Tracking::Track()
                     Sophus::SE3f TcwMM;
                     if(mbVelocity)
                     {
-                        bOKMM = TrackWithMotionModel();
+                        try
+                        {
+                            bOKMM = TrackWithMotionModel();
+                        }
+                        catch(const cv::Exception& e)
+                        {
+                            logTrackStageException("TrackWithMotionModel.vo", e);
+                            throw;
+                        }
                         vpMPsMM = mCurrentFrame.mvpMapPoints;
                         vbOutMM = mCurrentFrame.mvbOutlier;
                         TcwMM = mCurrentFrame.GetPose();
                     }
-                    bOKReloc = Relocalization();
+                    try
+                    {
+                        bOKReloc = Relocalization();
+                    }
+                    catch(const cv::Exception& e)
+                    {
+                        logTrackStageException("Relocalization.vo", e);
+                        throw;
+                    }
 
                     if(bOKMM && !bOKReloc)
                     {
@@ -2498,7 +2581,15 @@ void Tracking::Track()
 //         }
 // #endif
 //         // ===== [A] 信息选点结束 =====
-                bOK = TrackLocalMap();
+                try
+                {
+                    bOK = TrackLocalMap();
+                }
+                catch(const cv::Exception& e)
+                {
+                    logTrackStageException("TrackLocalMap.normal", e);
+                    throw;
+                }
 
             }
             if(!bOK)
@@ -2510,7 +2601,17 @@ void Tracking::Track()
             // a local map and therefore we do not perform TrackLocalMap(). Once the system relocalizes
             // the camera we will use the local map again.
             if(bOK && !mbVO)
-                bOK = TrackLocalMap();
+            {
+                try
+                {
+                    bOK = TrackLocalMap();
+                }
+                catch(const cv::Exception& e)
+                {
+                    logTrackStageException("TrackLocalMap.only_tracking", e);
+                    throw;
+                }
+            }
         }
 
         if(bOK)
@@ -2615,7 +2716,16 @@ void Tracking::Track()
 #ifdef REGISTER_TIMES
             std::chrono::steady_clock::time_point time_StartNewKF = std::chrono::steady_clock::now();
 #endif
-            bool bNeedKF = NeedNewKeyFrame();
+            bool bNeedKF = false;
+            try
+            {
+                bNeedKF = NeedNewKeyFrame();
+            }
+            catch(const cv::Exception& e)
+            {
+                logTrackStageException("NeedNewKeyFrame", e);
+                throw;
+            }
 
             // Check if we need to insert a new keyframe
             // if(bNeedKF && bOK)
@@ -2625,7 +2735,15 @@ void Tracking::Track()
 #ifdef ORB3_USE_INFOSEL
                 const long unsigned int kfsBeforeAdaptive = mpAtlas ? mpAtlas->KeyFramesInMap() : 0;
 #endif
-                CreateNewKeyFrame();
+                try
+                {
+                    CreateNewKeyFrame();
+                }
+                catch(const cv::Exception& e)
+                {
+                    logTrackStageException("CreateNewKeyFrame", e);
+                    throw;
+                }
 #ifdef ORB3_USE_INFOSEL
                 const long unsigned int kfsAfterAdaptive = mpAtlas ? mpAtlas->KeyFramesInMap() : kfsBeforeAdaptive;
                 mAdaptiveKeyFrameInserted = (kfsAfterAdaptive > kfsBeforeAdaptive);
