@@ -209,7 +209,7 @@ prepare_aidvo_config() {
 
   case "$base_config" in
     */Stereo/*|*/Stereo-Inertial/*)
-      forced_topk="${STEREO_TOPK:-220}"
+      forced_topk="${STEREO_TOPK:-300}"
       ;;
   esac
 
@@ -227,7 +227,7 @@ prepare_aidvo_config() {
 EnableAdaptiveIDVO: ${enable}
 AdaptivePolicyType: "${policy}"
 MinKappaTop: ${MIN_KAPPA_TOP:-120}
-MaxKappaTop: ${MAX_KAPPA_TOP:-420}
+MaxKappaTop: ${MAX_KAPPA_TOP:-520}
 MinTau0: ${MIN_TAU0:-0.1}
 MaxTau0: ${MAX_TAU0:-5.0}
 TrackingTimeBudget: ${TRACKING_TIME_BUDGET:-30.0}
