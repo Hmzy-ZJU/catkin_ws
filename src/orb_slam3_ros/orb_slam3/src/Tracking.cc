@@ -1744,10 +1744,57 @@ Sophus::SE3f Tracking::GrabImageStereo(const cv::Mat &imRectLeft, const cv::Mat 
 #endif
     //* Step 3 ：跟踪
     //cout << "Tracking start" << endl;
-    Track();
+    try
+    {
+        Track();
+    }
+    catch(const cv::Exception& e)
+    {
+        std::cerr << "[Tracking] Track() OpenCV exception in stereo frame, marking frame lost: "
+                  << e.what() << std::endl;
+        mState = RECENTLY_LOST;
+        if(mCurrentFrame.isSet() && mCurrentFrame.mpReferenceKF)
+        {
+            Sophus::SE3f Tcr_ = mCurrentFrame.GetPose() * mCurrentFrame.mpReferenceKF->GetPoseInverse();
+            mlRelativeFramePoses.push_back(Tcr_);
+            mlpReferences.push_back(mCurrentFrame.mpReferenceKF);
+            mlFrameTimes.push_back(mCurrentFrame.mTimeStamp);
+            mlbLost.push_back(true);
+        }
+        else if(!mlRelativeFramePoses.empty() && !mlpReferences.empty() && !mlFrameTimes.empty())
+        {
+            mlRelativeFramePoses.push_back(mlRelativeFramePoses.back());
+            mlpReferences.push_back(mlpReferences.back());
+            mlFrameTimes.push_back(mCurrentFrame.mTimeStamp);
+            mlbLost.push_back(true);
+        }
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << "[Tracking] Track() exception in stereo frame, marking frame lost: "
+                  << e.what() << std::endl;
+        mState = RECENTLY_LOST;
+        if(mCurrentFrame.isSet() && mCurrentFrame.mpReferenceKF)
+        {
+            Sophus::SE3f Tcr_ = mCurrentFrame.GetPose() * mCurrentFrame.mpReferenceKF->GetPoseInverse();
+            mlRelativeFramePoses.push_back(Tcr_);
+            mlpReferences.push_back(mCurrentFrame.mpReferenceKF);
+            mlFrameTimes.push_back(mCurrentFrame.mTimeStamp);
+            mlbLost.push_back(true);
+        }
+        else if(!mlRelativeFramePoses.empty() && !mlpReferences.empty() && !mlFrameTimes.empty())
+        {
+            mlRelativeFramePoses.push_back(mlRelativeFramePoses.back());
+            mlpReferences.push_back(mlpReferences.back());
+            mlFrameTimes.push_back(mCurrentFrame.mTimeStamp);
+            mlbLost.push_back(true);
+        }
+    }
     //cout << "Tracking end" << endl;
     // 返回位姿
-    return mCurrentFrame.GetPose();
+    if(mCurrentFrame.isSet())
+        return mCurrentFrame.GetPose();
+    return Sophus::SE3f();
 }
 
 /**
