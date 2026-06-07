@@ -18,8 +18,68 @@
 
 #include "Converter.h"
 
+#include <cmath>
+#include <iostream>
+
 namespace ORB_SLAM3
 {
+
+namespace
+{
+
+bool HasCvMatShape(const cv::Mat &M, const int rows, const int cols, const char *name)
+{
+    if(M.empty() || M.rows < rows || M.cols < cols)
+    {
+        std::cerr << "[Converter] invalid " << name << " shape: "
+                  << M.rows << "x" << M.cols << std::endl;
+        return false;
+    }
+    return true;
+}
+
+double CvMatValueAsDouble(const cv::Mat &M, const int r, const int c)
+{
+    switch(M.depth())
+    {
+    case CV_32F:
+        return static_cast<double>(M.at<float>(r, c));
+    case CV_64F:
+        return M.at<double>(r, c);
+    case CV_32S:
+        return static_cast<double>(M.at<int>(r, c));
+    case CV_16S:
+        return static_cast<double>(M.at<short>(r, c));
+    case CV_16U:
+        return static_cast<double>(M.at<unsigned short>(r, c));
+    case CV_8S:
+        return static_cast<double>(M.at<signed char>(r, c));
+    case CV_8U:
+        return static_cast<double>(M.at<unsigned char>(r, c));
+    default:
+        return 0.0;
+    }
+}
+
+double CvVectorValueAsDouble(const cv::Mat &M, const int idx)
+{
+    if(M.cols == 1)
+        return CvMatValueAsDouble(M, idx, 0);
+    return CvMatValueAsDouble(M, 0, idx);
+}
+
+bool HasCvVector3Shape(const cv::Mat &M, const char *name)
+{
+    if(M.empty() || (M.rows < 3 && M.cols < 3))
+    {
+        std::cerr << "[Converter] invalid " << name << " shape: "
+                  << M.rows << "x" << M.cols << std::endl;
+        return false;
+    }
+    return true;
+}
+
+} // namespace
 
 std::vector<cv::Mat> Converter::toDescriptorVector(const cv::Mat &Descriptors)
 {
@@ -33,12 +93,15 @@ std::vector<cv::Mat> Converter::toDescriptorVector(const cv::Mat &Descriptors)
 
 g2o::SE3Quat Converter::toSE3Quat(const cv::Mat &cvT)
 {
-    Eigen::Matrix<double,3,3> R;
-    R << cvT.at<float>(0,0), cvT.at<float>(0,1), cvT.at<float>(0,2),
-         cvT.at<float>(1,0), cvT.at<float>(1,1), cvT.at<float>(1,2),
-         cvT.at<float>(2,0), cvT.at<float>(2,1), cvT.at<float>(2,2);
+    if(!HasCvMatShape(cvT, 3, 4, "SE3 cvT"))
+        return g2o::SE3Quat(Eigen::Matrix<double,3,3>::Identity(), Eigen::Matrix<double,3,1>::Zero());
 
-    Eigen::Matrix<double,3,1> t(cvT.at<float>(0,3), cvT.at<float>(1,3), cvT.at<float>(2,3));
+    Eigen::Matrix<double,3,3> R;
+    R << CvMatValueAsDouble(cvT,0,0), CvMatValueAsDouble(cvT,0,1), CvMatValueAsDouble(cvT,0,2),
+         CvMatValueAsDouble(cvT,1,0), CvMatValueAsDouble(cvT,1,1), CvMatValueAsDouble(cvT,1,2),
+         CvMatValueAsDouble(cvT,2,0), CvMatValueAsDouble(cvT,2,1), CvMatValueAsDouble(cvT,2,2);
+
+    Eigen::Matrix<double,3,1> t(CvMatValueAsDouble(cvT,0,3), CvMatValueAsDouble(cvT,1,3), CvMatValueAsDouble(cvT,2,3));
 
     return g2o::SE3Quat(R,t);
 }
@@ -170,16 +233,26 @@ cv::Mat Converter::toCvSE3(const Eigen::Matrix<double,3,3> &R, const Eigen::Matr
 
 Eigen::Matrix<double,3,1> Converter::toVector3d(const cv::Mat &cvVector)
 {
+    if(!HasCvVector3Shape(cvVector, "Vector3d"))
+        return Eigen::Matrix<double,3,1>::Zero();
+
     Eigen::Matrix<double,3,1> v;
-    v << cvVector.at<float>(0), cvVector.at<float>(1), cvVector.at<float>(2);
+    v << CvVectorValueAsDouble(cvVector, 0),
+         CvVectorValueAsDouble(cvVector, 1),
+         CvVectorValueAsDouble(cvVector, 2);
 
     return v;
 }
 
 Eigen::Matrix<float,3,1> Converter::toVector3f(const cv::Mat &cvVector)
 {
+    if(!HasCvVector3Shape(cvVector, "Vector3f"))
+        return Eigen::Matrix<float,3,1>::Zero();
+
     Eigen::Matrix<float,3,1> v;
-    v << cvVector.at<float>(0), cvVector.at<float>(1), cvVector.at<float>(2);
+    v << static_cast<float>(CvVectorValueAsDouble(cvVector, 0)),
+         static_cast<float>(CvVectorValueAsDouble(cvVector, 1)),
+         static_cast<float>(CvVectorValueAsDouble(cvVector, 2));
 
     return v;
 }
@@ -194,45 +267,57 @@ Eigen::Matrix<double,3,1> Converter::toVector3d(const cv::Point3f &cvPoint)
 
 Eigen::Matrix<double,3,3> Converter::toMatrix3d(const cv::Mat &cvMat3)
 {
+    if(!HasCvMatShape(cvMat3, 3, 3, "Matrix3d"))
+        return Eigen::Matrix<double,3,3>::Identity();
+
     Eigen::Matrix<double,3,3> M;
 
-    M << cvMat3.at<float>(0,0), cvMat3.at<float>(0,1), cvMat3.at<float>(0,2),
-         cvMat3.at<float>(1,0), cvMat3.at<float>(1,1), cvMat3.at<float>(1,2),
-         cvMat3.at<float>(2,0), cvMat3.at<float>(2,1), cvMat3.at<float>(2,2);
+    M << CvMatValueAsDouble(cvMat3,0,0), CvMatValueAsDouble(cvMat3,0,1), CvMatValueAsDouble(cvMat3,0,2),
+         CvMatValueAsDouble(cvMat3,1,0), CvMatValueAsDouble(cvMat3,1,1), CvMatValueAsDouble(cvMat3,1,2),
+         CvMatValueAsDouble(cvMat3,2,0), CvMatValueAsDouble(cvMat3,2,1), CvMatValueAsDouble(cvMat3,2,2);
 
     return M;
 }
 
 Eigen::Matrix<double,4,4> Converter::toMatrix4d(const cv::Mat &cvMat4)
 {
+    if(!HasCvMatShape(cvMat4, 4, 4, "Matrix4d"))
+        return Eigen::Matrix<double,4,4>::Identity();
+
     Eigen::Matrix<double,4,4> M;
 
-    M << cvMat4.at<float>(0,0), cvMat4.at<float>(0,1), cvMat4.at<float>(0,2), cvMat4.at<float>(0,3),
-         cvMat4.at<float>(1,0), cvMat4.at<float>(1,1), cvMat4.at<float>(1,2), cvMat4.at<float>(1,3),
-         cvMat4.at<float>(2,0), cvMat4.at<float>(2,1), cvMat4.at<float>(2,2), cvMat4.at<float>(2,3),
-         cvMat4.at<float>(3,0), cvMat4.at<float>(3,1), cvMat4.at<float>(3,2), cvMat4.at<float>(3,3);
+    M << CvMatValueAsDouble(cvMat4,0,0), CvMatValueAsDouble(cvMat4,0,1), CvMatValueAsDouble(cvMat4,0,2), CvMatValueAsDouble(cvMat4,0,3),
+         CvMatValueAsDouble(cvMat4,1,0), CvMatValueAsDouble(cvMat4,1,1), CvMatValueAsDouble(cvMat4,1,2), CvMatValueAsDouble(cvMat4,1,3),
+         CvMatValueAsDouble(cvMat4,2,0), CvMatValueAsDouble(cvMat4,2,1), CvMatValueAsDouble(cvMat4,2,2), CvMatValueAsDouble(cvMat4,2,3),
+         CvMatValueAsDouble(cvMat4,3,0), CvMatValueAsDouble(cvMat4,3,1), CvMatValueAsDouble(cvMat4,3,2), CvMatValueAsDouble(cvMat4,3,3);
     return M;
 }
 
 Eigen::Matrix<float,3,3> Converter::toMatrix3f(const cv::Mat &cvMat3)
 {
+    if(!HasCvMatShape(cvMat3, 3, 3, "Matrix3f"))
+        return Eigen::Matrix<float,3,3>::Identity();
+
     Eigen::Matrix<float,3,3> M;
 
-    M << cvMat3.at<float>(0,0), cvMat3.at<float>(0,1), cvMat3.at<float>(0,2),
-            cvMat3.at<float>(1,0), cvMat3.at<float>(1,1), cvMat3.at<float>(1,2),
-            cvMat3.at<float>(2,0), cvMat3.at<float>(2,1), cvMat3.at<float>(2,2);
+    M << static_cast<float>(CvMatValueAsDouble(cvMat3,0,0)), static_cast<float>(CvMatValueAsDouble(cvMat3,0,1)), static_cast<float>(CvMatValueAsDouble(cvMat3,0,2)),
+         static_cast<float>(CvMatValueAsDouble(cvMat3,1,0)), static_cast<float>(CvMatValueAsDouble(cvMat3,1,1)), static_cast<float>(CvMatValueAsDouble(cvMat3,1,2)),
+         static_cast<float>(CvMatValueAsDouble(cvMat3,2,0)), static_cast<float>(CvMatValueAsDouble(cvMat3,2,1)), static_cast<float>(CvMatValueAsDouble(cvMat3,2,2));
 
     return M;
 }
 
 Eigen::Matrix<float,4,4> Converter::toMatrix4f(const cv::Mat &cvMat4)
 {
+    if(!HasCvMatShape(cvMat4, 4, 4, "Matrix4f"))
+        return Eigen::Matrix<float,4,4>::Identity();
+
     Eigen::Matrix<float,4,4> M;
 
-    M << cvMat4.at<float>(0,0), cvMat4.at<float>(0,1), cvMat4.at<float>(0,2), cvMat4.at<float>(0,3),
-            cvMat4.at<float>(1,0), cvMat4.at<float>(1,1), cvMat4.at<float>(1,2), cvMat4.at<float>(1,3),
-            cvMat4.at<float>(2,0), cvMat4.at<float>(2,1), cvMat4.at<float>(2,2), cvMat4.at<float>(2,3),
-            cvMat4.at<float>(3,0), cvMat4.at<float>(3,1), cvMat4.at<float>(3,2), cvMat4.at<float>(3,3);
+    M << static_cast<float>(CvMatValueAsDouble(cvMat4,0,0)), static_cast<float>(CvMatValueAsDouble(cvMat4,0,1)), static_cast<float>(CvMatValueAsDouble(cvMat4,0,2)), static_cast<float>(CvMatValueAsDouble(cvMat4,0,3)),
+         static_cast<float>(CvMatValueAsDouble(cvMat4,1,0)), static_cast<float>(CvMatValueAsDouble(cvMat4,1,1)), static_cast<float>(CvMatValueAsDouble(cvMat4,1,2)), static_cast<float>(CvMatValueAsDouble(cvMat4,1,3)),
+         static_cast<float>(CvMatValueAsDouble(cvMat4,2,0)), static_cast<float>(CvMatValueAsDouble(cvMat4,2,1)), static_cast<float>(CvMatValueAsDouble(cvMat4,2,2)), static_cast<float>(CvMatValueAsDouble(cvMat4,2,3)),
+         static_cast<float>(CvMatValueAsDouble(cvMat4,3,0)), static_cast<float>(CvMatValueAsDouble(cvMat4,3,1)), static_cast<float>(CvMatValueAsDouble(cvMat4,3,2)), static_cast<float>(CvMatValueAsDouble(cvMat4,3,3));
     return M;
 }
 
@@ -298,10 +383,19 @@ std::vector<float> Converter::toEuler(const cv::Mat &R)
 }
 
 Sophus::SE3<float> Converter::toSophus(const cv::Mat &T) {
-    Eigen::Matrix<double,3,3> eigMat = toMatrix3d(T.rowRange(0,3).colRange(0,3));
+    if(!HasCvMatShape(T, 3, 4, "Sophus SE3"))
+        return Sophus::SE3<float>();
+
+    Eigen::Matrix<double,3,3> eigMat;
+    eigMat << CvMatValueAsDouble(T,0,0), CvMatValueAsDouble(T,0,1), CvMatValueAsDouble(T,0,2),
+              CvMatValueAsDouble(T,1,0), CvMatValueAsDouble(T,1,1), CvMatValueAsDouble(T,1,2),
+              CvMatValueAsDouble(T,2,0), CvMatValueAsDouble(T,2,1), CvMatValueAsDouble(T,2,2);
     Eigen::Quaternionf q(eigMat.cast<float>());
 
-    Eigen::Matrix<float,3,1> t = toVector3d(T.rowRange(0,3).col(3)).cast<float>();
+    Eigen::Matrix<float,3,1> t;
+    t << static_cast<float>(CvMatValueAsDouble(T,0,3)),
+         static_cast<float>(CvMatValueAsDouble(T,1,3)),
+         static_cast<float>(CvMatValueAsDouble(T,2,3));
 
     return Sophus::SE3<float>(q,t);
 }
