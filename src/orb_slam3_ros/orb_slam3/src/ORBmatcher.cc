@@ -26,11 +26,41 @@
 #include "Thirdparty/DBoW2/DBoW2/FeatureVector.h"
 
 #include<stdint-gcc.h>
+#include<iostream>
 
 using namespace std;
 
 namespace ORB_SLAM3
 {
+
+namespace
+{
+
+bool ValidDescriptorRow(const cv::Mat &D, const int row, const char *where)
+{
+    if(D.empty() || row < 0 || row >= D.rows)
+    {
+        std::cerr << "[ORBmatcher] invalid descriptor row in " << where
+                  << ": row=" << row
+                  << " rows=" << D.rows << std::endl;
+        return false;
+    }
+    return true;
+}
+
+bool ValidVectorIndex(const size_t idx, const size_t size, const char *where)
+{
+    if(idx >= size)
+    {
+        std::cerr << "[ORBmatcher] invalid vector index in " << where
+                  << ": idx=" << idx
+                  << " size=" << size << std::endl;
+        return false;
+    }
+    return true;
+}
+
+}
 
     const int ORBmatcher::TH_HIGH = 100;
     const int ORBmatcher::TH_LOW = 50;
@@ -49,6 +79,8 @@ namespace ORB_SLAM3
         for(size_t iMP=0; iMP<vpMapPoints.size(); iMP++)
         {
             MapPoint* pMP = vpMapPoints[iMP];
+            if(!pMP)
+                continue;
             if(!pMP->mbTrackInView && !pMP->mbTrackInViewR)
                 continue;
 
@@ -61,6 +93,8 @@ namespace ORB_SLAM3
             if(pMP->mbTrackInView)
             {
                 const int &nPredictedLevel = pMP->mnTrackScaleLevel;
+                if(nPredictedLevel < 0 || nPredictedLevel >= static_cast<int>(F.mvScaleFactors.size()))
+                    continue;
 
                 // The size of the window will depend on the viewing direction
                 float r = RadiusByViewingCos(pMP->mTrackViewCos);
@@ -72,6 +106,8 @@ namespace ORB_SLAM3
                         F.GetFeaturesInArea(pMP->mTrackProjX,pMP->mTrackProjY,r*F.mvScaleFactors[nPredictedLevel],nPredictedLevel-1,nPredictedLevel);
 
                 if(!vIndices.empty()){
+                    if(pMP->GetDescriptor().empty())
+                        continue;
                     const cv::Mat MPdescriptor = pMP->GetDescriptor();
 
                     int bestDist=256;
@@ -84,6 +120,29 @@ namespace ORB_SLAM3
                     for(vector<size_t>::const_iterator vit=vIndices.begin(), vend=vIndices.end(); vit!=vend; vit++)
                     {
                         const size_t idx = *vit;
+                        if(!ValidVectorIndex(idx, F.mvpMapPoints.size(), "SearchByProjection.local.left.mvpMapPoints") ||
+                           !ValidDescriptorRow(F.mDescriptors, static_cast<int>(idx), "SearchByProjection.local.left.desc"))
+                            continue;
+                        if(F.Nleft == -1)
+                        {
+                            if(!ValidVectorIndex(idx, F.mvKeysUn.size(), "SearchByProjection.local.left.mvKeysUn") ||
+                               !ValidVectorIndex(idx, F.mvuRight.size(), "SearchByProjection.local.left.mvuRight"))
+                                continue;
+                        }
+                        else
+                        {
+                            if(idx < static_cast<size_t>(F.Nleft))
+                            {
+                                if(!ValidVectorIndex(idx, F.mvKeys.size(), "SearchByProjection.local.left.mvKeys"))
+                                    continue;
+                            }
+                            else
+                            {
+                                const size_t rightIdx = idx - static_cast<size_t>(F.Nleft);
+                                if(!ValidVectorIndex(rightIdx, F.mvKeysRight.size(), "SearchByProjection.local.left.mvKeysRight"))
+                                    continue;
+                            }
+                        }
 
                         if(F.mvpMapPoints[idx])
                             if(F.mvpMapPoints[idx]->Observations()>0)
@@ -122,14 +181,21 @@ namespace ORB_SLAM3
                     // Apply ratio to second match (only if best and second are in the same scale level)
                     if(bestDist<=TH_HIGH)
                     {
+                        if(bestIdx < 0 ||
+                           !ValidVectorIndex(static_cast<size_t>(bestIdx), F.mvpMapPoints.size(), "SearchByProjection.local.left.bestIdx"))
+                            continue;
                         if(bestLevel==bestLevel2 && bestDist>mfNNratio*bestDist2)
                             continue;
 
                         if(bestLevel!=bestLevel2 || bestDist<=mfNNratio*bestDist2){
                             F.mvpMapPoints[bestIdx]=pMP;
 
-                            if(F.Nleft != -1 && F.mvLeftToRightMatch[bestIdx] != -1){ //Also match with the stereo observation at right camera
-                                F.mvpMapPoints[F.mvLeftToRightMatch[bestIdx] + F.Nleft] = pMP;
+                            if(F.Nleft != -1 &&
+                               ValidVectorIndex(static_cast<size_t>(bestIdx), F.mvLeftToRightMatch.size(), "SearchByProjection.local.left.leftToRight") &&
+                               F.mvLeftToRightMatch[bestIdx] != -1){ //Also match with the stereo observation at right camera
+                                const int stereoIdx = F.mvLeftToRightMatch[bestIdx] + F.Nleft;
+                                if(ValidVectorIndex(static_cast<size_t>(stereoIdx), F.mvpMapPoints.size(), "SearchByProjection.local.left.stereoIdx"))
+                                    F.mvpMapPoints[stereoIdx] = pMP;
                                 nmatches++;
                                 right++;
                             }
@@ -144,6 +210,8 @@ namespace ORB_SLAM3
             if(F.Nleft != -1 && pMP->mbTrackInViewR){
                 const int &nPredictedLevel = pMP->mnTrackScaleLevelR;
                 if(nPredictedLevel != -1){
+                    if(nPredictedLevel < 0 || nPredictedLevel >= static_cast<int>(F.mvScaleFactors.size()))
+                        continue;
                     float r = RadiusByViewingCos(pMP->mTrackViewCosR);
 
                     const vector<size_t> vIndices =
@@ -152,6 +220,8 @@ namespace ORB_SLAM3
                     if(vIndices.empty())
                         continue;
 
+                    if(pMP->GetDescriptor().empty())
+                        continue;
                     const cv::Mat MPdescriptor = pMP->GetDescriptor();
 
                     int bestDist=256;
@@ -164,13 +234,18 @@ namespace ORB_SLAM3
                     for(vector<size_t>::const_iterator vit=vIndices.begin(), vend=vIndices.end(); vit!=vend; vit++)
                     {
                         const size_t idx = *vit;
+                        const int fullIdx = static_cast<int>(idx) + F.Nleft;
+                        if(!ValidVectorIndex(idx, F.mvKeysRight.size(), "SearchByProjection.local.right.mvKeysRight") ||
+                           !ValidVectorIndex(static_cast<size_t>(fullIdx), F.mvpMapPoints.size(), "SearchByProjection.local.right.mvpMapPoints") ||
+                           !ValidDescriptorRow(F.mDescriptors, fullIdx, "SearchByProjection.local.right.desc"))
+                            continue;
 
-                        if(F.mvpMapPoints[idx + F.Nleft])
-                            if(F.mvpMapPoints[idx + F.Nleft]->Observations()>0)
+                        if(F.mvpMapPoints[fullIdx])
+                            if(F.mvpMapPoints[fullIdx]->Observations()>0)
                                 continue;
 
 
-                        const cv::Mat &d = F.mDescriptors.row(idx + F.Nleft);
+                        const cv::Mat &d = F.mDescriptors.row(fullIdx);
 
                         const int dist = DescriptorDistance(MPdescriptor,d);
 
@@ -192,17 +267,26 @@ namespace ORB_SLAM3
                     // Apply ratio to second match (only if best and second are in the same scale level)
                     if(bestDist<=TH_HIGH)
                     {
+                        if(bestIdx < 0 ||
+                           !ValidVectorIndex(static_cast<size_t>(bestIdx), F.mvKeysRight.size(), "SearchByProjection.local.right.bestIdx"))
+                            continue;
                         if(bestLevel==bestLevel2 && bestDist>mfNNratio*bestDist2)
                             continue;
 
-                        if(F.Nleft != -1 && F.mvRightToLeftMatch[bestIdx] != -1){ //Also match with the stereo observation at right camera
-                            F.mvpMapPoints[F.mvRightToLeftMatch[bestIdx]] = pMP;
+                        if(F.Nleft != -1 &&
+                           ValidVectorIndex(static_cast<size_t>(bestIdx), F.mvRightToLeftMatch.size(), "SearchByProjection.local.right.rightToLeft") &&
+                           F.mvRightToLeftMatch[bestIdx] != -1){ //Also match with the stereo observation at right camera
+                            if(ValidVectorIndex(static_cast<size_t>(F.mvRightToLeftMatch[bestIdx]), F.mvpMapPoints.size(), "SearchByProjection.local.right.stereoIdx"))
+                                F.mvpMapPoints[F.mvRightToLeftMatch[bestIdx]] = pMP;
                             nmatches++;
                             left++;
                         }
 
 
-                        F.mvpMapPoints[bestIdx + F.Nleft]=pMP;
+                        const int fullBestIdx = bestIdx + F.Nleft;
+                        if(!ValidVectorIndex(static_cast<size_t>(fullBestIdx), F.mvpMapPoints.size(), "SearchByProjection.local.right.fullBestIdx"))
+                            continue;
+                        F.mvpMapPoints[fullBestIdx]=pMP;
                         nmatches++;
                         right++;
                     }
@@ -1694,11 +1778,32 @@ namespace ORB_SLAM3
 
         for(int i=0; i<LastFrame.N; i++)
         {
+            if(i < 0 ||
+               i >= static_cast<int>(LastFrame.mvpMapPoints.size()) ||
+               i >= static_cast<int>(LastFrame.mvbOutlier.size()))
+                continue;
             MapPoint* pMP = LastFrame.mvpMapPoints[i];
             if(pMP)
             {
                 if(!LastFrame.mvbOutlier[i])
                 {
+                    if(LastFrame.Nleft == -1)
+                    {
+                        if(i >= static_cast<int>(LastFrame.mvKeysUn.size()) ||
+                           i >= static_cast<int>(LastFrame.mvKeys.size()))
+                            continue;
+                    }
+                    else if(i < LastFrame.Nleft)
+                    {
+                        if(i >= static_cast<int>(LastFrame.mvKeys.size()))
+                            continue;
+                    }
+                    else
+                    {
+                        const int rightIdx = i - LastFrame.Nleft;
+                        if(rightIdx < 0 || rightIdx >= static_cast<int>(LastFrame.mvKeysRight.size()))
+                            continue;
+                    }
                     // Project
                     Eigen::Vector3f x3Dw = pMP->GetWorldPos();
                     Eigen::Vector3f x3Dc = Tcw * x3Dw;
@@ -1719,6 +1824,8 @@ namespace ORB_SLAM3
 
                     int nLastOctave = (LastFrame.Nleft == -1 || i < LastFrame.Nleft) ? LastFrame.mvKeys[i].octave
                                                                                      : LastFrame.mvKeysRight[i - LastFrame.Nleft].octave;
+                    if(nLastOctave < 0 || nLastOctave >= static_cast<int>(CurrentFrame.mvScaleFactors.size()))
+                        continue;
 
                     // Search in a window. Size depends on scale
                     float radius = th*CurrentFrame.mvScaleFactors[nLastOctave];
@@ -1735,6 +1842,8 @@ namespace ORB_SLAM3
                     if(vIndices2.empty())
                         continue;
 
+                    if(pMP->GetDescriptor().empty())
+                        continue;
                     const cv::Mat dMP = pMP->GetDescriptor();
 
                     int bestDist = 256;
@@ -1743,6 +1852,26 @@ namespace ORB_SLAM3
                     for(vector<size_t>::const_iterator vit=vIndices2.begin(), vend=vIndices2.end(); vit!=vend; vit++)
                     {
                         const size_t i2 = *vit;
+                        if(!ValidVectorIndex(i2, CurrentFrame.mvpMapPoints.size(), "SearchByProjection.motion.left.mvpMapPoints") ||
+                           !ValidDescriptorRow(CurrentFrame.mDescriptors, static_cast<int>(i2), "SearchByProjection.motion.left.desc"))
+                            continue;
+                        if(CurrentFrame.Nleft == -1)
+                        {
+                            if(!ValidVectorIndex(i2, CurrentFrame.mvuRight.size(), "SearchByProjection.motion.left.mvuRight") ||
+                               !ValidVectorIndex(i2, CurrentFrame.mvKeysUn.size(), "SearchByProjection.motion.left.mvKeysUn"))
+                                continue;
+                        }
+                        else if(i2 < static_cast<size_t>(CurrentFrame.Nleft))
+                        {
+                            if(!ValidVectorIndex(i2, CurrentFrame.mvKeys.size(), "SearchByProjection.motion.left.mvKeys"))
+                                continue;
+                        }
+                        else
+                        {
+                            const size_t rightIdx = i2 - static_cast<size_t>(CurrentFrame.Nleft);
+                            if(!ValidVectorIndex(rightIdx, CurrentFrame.mvKeysRight.size(), "SearchByProjection.motion.left.mvKeysRight"))
+                                continue;
+                        }
 
                         if(CurrentFrame.mvpMapPoints[i2])
                             if(CurrentFrame.mvpMapPoints[i2]->Observations()>0)
@@ -1769,6 +1898,9 @@ namespace ORB_SLAM3
 
                     if(bestDist<=TH_HIGH)
                     {
+                        if(bestIdx2 < 0 ||
+                           !ValidVectorIndex(static_cast<size_t>(bestIdx2), CurrentFrame.mvpMapPoints.size(), "SearchByProjection.motion.left.bestIdx"))
+                            continue;
                         CurrentFrame.mvpMapPoints[bestIdx2]=pMP;
                         nmatches++;
 
@@ -1797,6 +1929,8 @@ namespace ORB_SLAM3
 
                         int nLastOctave = (LastFrame.Nleft == -1 || i < LastFrame.Nleft) ? LastFrame.mvKeys[i].octave
                                              : LastFrame.mvKeysRight[i - LastFrame.Nleft].octave;
+                        if(nLastOctave < 0 || nLastOctave >= static_cast<int>(CurrentFrame.mvScaleFactors.size()))
+                            continue;
 
                         // Search in a window. Size depends on scale
                         float radius = th*CurrentFrame.mvScaleFactors[nLastOctave];
@@ -1811,6 +1945,8 @@ namespace ORB_SLAM3
                             vIndices2 = CurrentFrame.GetFeaturesInArea(uv(0),uv(1), radius, nLastOctave-1, nLastOctave+1, true);
 
                         const cv::Mat dMP = pMP->GetDescriptor();
+                        if(dMP.empty())
+                            continue;
 
                         int bestDist = 256;
                         int bestIdx2 = -1;
@@ -1818,11 +1954,16 @@ namespace ORB_SLAM3
                         for(vector<size_t>::const_iterator vit=vIndices2.begin(), vend=vIndices2.end(); vit!=vend; vit++)
                         {
                             const size_t i2 = *vit;
-                            if(CurrentFrame.mvpMapPoints[i2 + CurrentFrame.Nleft])
-                                if(CurrentFrame.mvpMapPoints[i2 + CurrentFrame.Nleft]->Observations()>0)
+                            const int fullIdx = static_cast<int>(i2) + CurrentFrame.Nleft;
+                            if(!ValidVectorIndex(i2, CurrentFrame.mvKeysRight.size(), "SearchByProjection.motion.right.mvKeysRight") ||
+                               !ValidVectorIndex(static_cast<size_t>(fullIdx), CurrentFrame.mvpMapPoints.size(), "SearchByProjection.motion.right.mvpMapPoints") ||
+                               !ValidDescriptorRow(CurrentFrame.mDescriptors, fullIdx, "SearchByProjection.motion.right.desc"))
+                                continue;
+                            if(CurrentFrame.mvpMapPoints[fullIdx])
+                                if(CurrentFrame.mvpMapPoints[fullIdx]->Observations()>0)
                                     continue;
 
-                            const cv::Mat &d = CurrentFrame.mDescriptors.row(i2 + CurrentFrame.Nleft);
+                            const cv::Mat &d = CurrentFrame.mDescriptors.row(fullIdx);
 
                             const int dist = DescriptorDistance(dMP,d);
 
@@ -1835,7 +1976,13 @@ namespace ORB_SLAM3
 
                         if(bestDist<=TH_HIGH)
                         {
-                            CurrentFrame.mvpMapPoints[bestIdx2 + CurrentFrame.Nleft]=pMP;
+                            if(bestIdx2 < 0 ||
+                               !ValidVectorIndex(static_cast<size_t>(bestIdx2), CurrentFrame.mvKeysRight.size(), "SearchByProjection.motion.right.bestIdx"))
+                                continue;
+                            const int fullBestIdx = bestIdx2 + CurrentFrame.Nleft;
+                            if(!ValidVectorIndex(static_cast<size_t>(fullBestIdx), CurrentFrame.mvpMapPoints.size(), "SearchByProjection.motion.right.fullBestIdx"))
+                                continue;
+                            CurrentFrame.mvpMapPoints[fullBestIdx]=pMP;
                             nmatches++;
                             if(mbCheckOrientation)
                             {
@@ -1932,6 +2079,8 @@ namespace ORB_SLAM3
                         continue;
 
                     int nPredictedLevel = pMP->PredictScale(dist3D,&CurrentFrame);
+                    if(nPredictedLevel < 0 || nPredictedLevel >= static_cast<int>(CurrentFrame.mvScaleFactors.size()))
+                        continue;
 
                     // Search in a window
                     const float radius = th*CurrentFrame.mvScaleFactors[nPredictedLevel];
@@ -1941,6 +2090,8 @@ namespace ORB_SLAM3
                     if(vIndices2.empty())
                         continue;
 
+                    if(pMP->GetDescriptor().empty())
+                        continue;
                     const cv::Mat dMP = pMP->GetDescriptor();
 
                     int bestDist = 256;
@@ -1949,6 +2100,25 @@ namespace ORB_SLAM3
                     for(vector<size_t>::const_iterator vit=vIndices2.begin(); vit!=vIndices2.end(); vit++)
                     {
                         const size_t i2 = *vit;
+                        if(!ValidVectorIndex(i2, CurrentFrame.mvpMapPoints.size(), "SearchByProjection.kf.current.mvpMapPoints") ||
+                           !ValidDescriptorRow(CurrentFrame.mDescriptors, static_cast<int>(i2), "SearchByProjection.kf.current.desc"))
+                            continue;
+                        if(CurrentFrame.Nleft == -1)
+                        {
+                            if(!ValidVectorIndex(i2, CurrentFrame.mvKeysUn.size(), "SearchByProjection.kf.current.mvKeysUn"))
+                                continue;
+                        }
+                        else if(i2 < static_cast<size_t>(CurrentFrame.Nleft))
+                        {
+                            if(!ValidVectorIndex(i2, CurrentFrame.mvKeys.size(), "SearchByProjection.kf.current.mvKeys"))
+                                continue;
+                        }
+                        else
+                        {
+                            const size_t rightIdx = i2 - static_cast<size_t>(CurrentFrame.Nleft);
+                            if(!ValidVectorIndex(rightIdx, CurrentFrame.mvKeysRight.size(), "SearchByProjection.kf.current.mvKeysRight"))
+                                continue;
+                        }
                         if(CurrentFrame.mvpMapPoints[i2])
                             continue;
 
@@ -1965,11 +2135,17 @@ namespace ORB_SLAM3
 
                     if(bestDist<=ORBdist)
                     {
+                        if(bestIdx2 < 0 ||
+                           !ValidVectorIndex(static_cast<size_t>(bestIdx2), CurrentFrame.mvpMapPoints.size(), "SearchByProjection.kf.current.bestIdx"))
+                            continue;
                         CurrentFrame.mvpMapPoints[bestIdx2]=pMP;
                         nmatches++;
 
                         if(mbCheckOrientation)
                         {
+                            if(i >= pKF->mvKeysUn.size() ||
+                               bestIdx2 >= static_cast<int>(CurrentFrame.mvKeysUn.size()))
+                                continue;
                             float rot = pKF->mvKeysUn[i].angle-CurrentFrame.mvKeysUn[bestIdx2].angle;
                             if(rot<0.0)
                                 rot+=360.0f;
