@@ -198,6 +198,7 @@ prepare_aidvo_config() {
   local mode="$4"
   local enable=1
   local policy="RuleBased"
+  local forced_topk=""
 
   case "$mode" in
     off) enable=0; policy="Fixed" ;;
@@ -206,9 +207,19 @@ prepare_aidvo_config() {
     *) log "[ERROR] invalid AIDVO mode: $mode"; return 1 ;;
   esac
 
+  case "$base_config" in
+    */Stereo/*|*/Stereo-Inertial/*)
+      forced_topk="${STEREO_TOPK:-220}"
+      ;;
+  esac
+
   awk '
-    !/^[[:space:]]*(EnableAdaptiveIDVO|AdaptivePolicyType|MinKappaTop|MaxKappaTop|MinTau0|MaxTau0|TrackingTimeBudget|SmoothFactor|EnableAdaptiveLogging|AdaptiveLogPath|Adaptive\.LowLogDetH|Adaptive\.PoorConditionNumber|Adaptive\.LowInlierRatio|Adaptive\.BlurThreshold)[[:space:]]*:/
+    !/^[[:space:]]*(InfoSelector\.TopK|EnableAdaptiveIDVO|AdaptivePolicyType|MinKappaTop|MaxKappaTop|MinTau0|MaxTau0|TrackingTimeBudget|SmoothFactor|EnableAdaptiveLogging|AdaptiveLogPath|Adaptive\.LowLogDetH|Adaptive\.PoorConditionNumber|Adaptive\.LowInlierRatio|Adaptive\.BlurThreshold)[[:space:]]*:/
   ' "$base_config" > "$output_config"
+
+  if [ -n "$forced_topk" ]; then
+    echo "InfoSelector.TopK: $forced_topk" >> "$output_config"
+  fi
 
   cat >> "$output_config" <<EOF
 
@@ -875,6 +886,7 @@ run_case_one() {
   log "[RUN] bag=$bag"
   log "[RUN] launch=$launch_name"
   log "[RUN] config=$generated_config"
+  log "[RUN_CONFIG] $(grep -E '^(InfoSelector\.TopK|EnableAdaptiveIDVO|AdaptivePolicyType|MinKappaTop|MaxKappaTop|MinTau0|MaxTau0|SmoothFactor):' "$generated_config" | tr '\n' ' ')"
   log "[RUN] result_dir=$run_dir"
   log "[RUN] bag_start=$case_start bag_duration=$case_duration played_duration_est=$played_duration"
   log "============================================================"
