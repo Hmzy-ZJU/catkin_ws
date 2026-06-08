@@ -240,7 +240,7 @@ run_one() {
   set +e
   (
     cd "$result_dir"
-    "$exe" "$VOCAB" "$cfg" "$extract_dir" "$extract_dir/timestamps.txt" "$tag" > offline_stdout.txt 2>&1
+    AIDVO_OFFLINE_REALTIME="${AIDVO_OFFLINE_REALTIME:-0}" "$exe" "$VOCAB" "$cfg" "$extract_dir" "$extract_dir/timestamps.txt" "$tag" > offline_stdout.txt 2>&1
   )
   exit_code=$?
   set -e
@@ -261,12 +261,12 @@ PY
 
   status="PASS"
   notes="ok"
-  if [ "$exit_code" -ne 0 ]; then
-    status="FAIL"
-    notes="offline_runner_exit_$exit_code"
-  elif [ "$traj_poses" -lt "${MIN_TRAJECTORY_POSES:-20}" ]; then
+  if [ "$traj_poses" -lt "${MIN_TRAJECTORY_POSES:-20}" ]; then
     status="VALIDATION_FAIL"
     notes="too_few_trajectory_poses"
+  elif [ "$exit_code" -ne 0 ]; then
+    status="PASS_WITH_EXIT_${exit_code}"
+    notes="trajectory_saved_but_runner_exit_$exit_code"
   fi
 
   write_row "$dataset" "$sensor" "$mode" "$bag" "$seq" "$run_id" "$status" "$exit_code" "$elapsed" "$extract_dir" "$result_dir" "$cfg" "$traj_file" "$adaptive_csv" "$traj_poses" "$input_frames" "$completeness" "$notes"

@@ -23,6 +23,7 @@
 #include<chrono>
 #include <ctime>
 #include <sstream>
+#include <cstdlib>
 
 #include <opencv2/core/core.hpp>
 
@@ -130,6 +131,8 @@ int main(int argc, char **argv)
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
     ORB_SLAM3::System SLAM(argv[1],argv[2],ORB_SLAM3::System::IMU_STEREO, false);
+    const char* realtime_env = std::getenv("AIDVO_OFFLINE_REALTIME");
+    const bool bRealtime = realtime_env && string(realtime_env) == "1";
 
     cv::Mat imLeft, imRight;
     for (seq = 0; seq<num_seq; seq++)
@@ -206,7 +209,7 @@ int main(int argc, char **argv)
             else if(ni>0)
                 T = tframe-vTimestampsCam[seq][ni-1];
 
-            if(ttrack<T)
+            if(bRealtime && ttrack<T)
                 usleep((T-ttrack)*1e6); // 1e6
         }
 

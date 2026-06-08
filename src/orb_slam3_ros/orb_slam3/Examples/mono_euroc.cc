@@ -20,6 +20,7 @@
 #include<algorithm>
 #include<fstream>
 #include<chrono>
+#include<cstdlib>
 
 #include<opencv2/core/core.hpp>
 
@@ -81,6 +82,8 @@ int main(int argc, char **argv)
     float dT = 1.f/fps;
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
     ORB_SLAM3::System SLAM(argv[1],argv[2],ORB_SLAM3::System::MONOCULAR, false);
+    const char* realtime_env = std::getenv("AIDVO_OFFLINE_REALTIME");
+    const bool bRealtime = realtime_env && string(realtime_env) == "1";
     float imageScale = SLAM.GetImageScale();
 
     double t_resize = 0.f;
@@ -164,7 +167,7 @@ int main(int argc, char **argv)
             //std::cout << "T: " << T << std::endl;
             //std::cout << "ttrack: " << ttrack << std::endl;
 
-            if(ttrack<T) {
+            if(bRealtime && ttrack<T) {
                 //std::cout << "usleep: " << (dT-ttrack) << std::endl;
                 usleep((T-ttrack)*1e6); // 1e6
             }
