@@ -352,6 +352,7 @@ protected:
     bool mResetActiveMapBeforeImuInit;
     int mMinInitTrackedPoints;
     int mMinTrackLocalMapInliersBeforeImuInit;
+    bool mRequireInertialBA2ForTracking;
 
     //New KeyFrame rules (according to fps)
     int mMinFrames;
@@ -438,6 +439,7 @@ protected:
     InfoSelectParams GetCurrentInfoSelectParams() const;
     InfoKFParams GetCurrentInfoKFParams() const;
 #endif
+    bool IsImuTrackingReady() const;
 #ifdef REGISTER_LOOP
     bool Stop();
 

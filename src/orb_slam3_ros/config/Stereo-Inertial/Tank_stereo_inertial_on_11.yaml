@@ -72,12 +72,13 @@ timeshift_cam_imu: 0.0
 IMU.InsertKFsWhenLost: 1
 IMU.ResetActiveMapBeforeInit: 0
 IMU.RecentlyLostTime: 10.0
+IMU.RequireBA2ForTracking: 1
 
-ORBextractor.nFeatures: 900
+ORBextractor.nFeatures: 1800
 ORBextractor.scaleFactor: 1.2
 ORBextractor.nLevels: 8
-ORBextractor.iniThFAST: 12
-ORBextractor.minThFAST: 7
+ORBextractor.iniThFAST: 10
+ORBextractor.minThFAST: 5
 
 Viewer.KeyFrameSize: 0.05
 Viewer.KeyFrameLineWidth: 1.0

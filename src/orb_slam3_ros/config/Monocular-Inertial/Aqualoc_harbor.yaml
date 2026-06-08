@@ -47,6 +47,7 @@ IMU.ResetActiveMapBeforeInit: 0
 IMU.RecentlyLostTime: 10.0
 IMU.MinInitTrackedPoints: 30
 IMU.MinTrackLocalMapInliersBeforeInit: 25
+IMU.RequireBA2ForTracking: 1
 
 #==================== ORB Extractor ====================
 ORBextractor.nFeatures: 1600

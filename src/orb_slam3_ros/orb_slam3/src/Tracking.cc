@@ -71,7 +71,8 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
     mbReadyToInitializate(false), mpSystem(pSys), mpViewer(NULL), bStepByStep(false),
     mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpAtlas(pAtlas), mnLastRelocFrameId(0), time_recently_lost(5.0),
     mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), mpLastKeyFrame(static_cast<KeyFrame*>(NULL)),
-    mResetActiveMapBeforeImuInit(true), mMinInitTrackedPoints(50), mMinTrackLocalMapInliersBeforeImuInit(50)
+    mResetActiveMapBeforeImuInit(true), mMinInitTrackedPoints(50), mMinTrackLocalMapInliersBeforeImuInit(50),
+    mRequireInertialBA2ForTracking(false)
 {
     // Load camera parameters from settings file
     // Step 1 从配置文件中加载相机参数
@@ -94,6 +95,9 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
             cv::FileNode minTrackNode = fSettings["IMU.MinTrackLocalMapInliersBeforeInit"];
             if(!minTrackNode.empty())
                 mMinTrackLocalMapInliersBeforeImuInit = std::max(10, (int)minTrackNode);
+            cv::FileNode requireBA2Node = fSettings["IMU.RequireBA2ForTracking"];
+            if(!requireBA2Node.empty())
+                mRequireInertialBA2ForTracking = ((int)requireBA2Node != 0);
         }
         #endif
     }
@@ -135,6 +139,9 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
             cv::FileNode minTrackNode = fSettings["IMU.MinTrackLocalMapInliersBeforeInit"];
             if(!minTrackNode.empty())
                 mMinTrackLocalMapInliersBeforeImuInit = std::max(10, (int)minTrackNode);
+            cv::FileNode requireBA2Node = fSettings["IMU.RequireBA2ForTracking"];
+            if(!requireBA2Node.empty())
+                mRequireInertialBA2ForTracking = ((int)requireBA2Node != 0);
         }
 
         if(!b_parse_cam || !b_parse_orb || !b_parse_imu)
@@ -2394,7 +2401,7 @@ void Tracking::Track()
                     bOK = true;
                     if((mSensor == System::IMU_MONOCULAR || mSensor == System::IMU_STEREO || mSensor == System::IMU_RGBD))
                     {
-                        if(pCurrentMap->isImuInitialized())
+                        if(IsImuTrackingReady())
                             PredictStateIMU();
                         else
                             bOK = false;
@@ -3548,7 +3555,7 @@ bool Tracking::TrackWithMotionModel()
     // Create "visual odometry" points if in Localization Mode
     UpdateLastFrame();
 
-    if (mpAtlas->isImuInitialized() && (mCurrentFrame.mnId>mnLastRelocFrameId+mnFramesToResetIMU))
+    if (IsImuTrackingReady() && (mCurrentFrame.mnId>mnLastRelocFrameId+mnFramesToResetIMU))
     {
         // Predict state with IMU if it is initialized and it doesnt need reset
         PredictStateIMU();
@@ -3835,7 +3842,8 @@ bool Tracking::TrackLocalMap()
         }
 
     int inliers;
-    if (!mpAtlas->isImuInitialized())
+    const bool bImuTrackingReady = IsImuTrackingReady();
+    if (!bImuTrackingReady)
         Optimizer::PoseOptimization(&mCurrentFrame);
     else
     {
@@ -3958,12 +3966,13 @@ bool Tracking::TrackLocalMap()
 
     if (mSensor == System::IMU_MONOCULAR)
     {
-        const int minInliers = mpAtlas->isImuInitialized() ? 15 : mMinTrackLocalMapInliersBeforeImuInit;
+        const int minInliers = bImuTrackingReady ? 15 : mMinTrackLocalMapInliersBeforeImuInit;
         if(mnMatchesInliers<minInliers)
         {
             cout << "TrackLocalMap fail: IMU_MONOCULAR inliers=" << mnMatchesInliers
                  << ", min_inliers=" << minInliers
-                 << ", imu_initialized=" << mpAtlas->isImuInitialized() << endl;
+                 << ", imu_initialized=" << mpAtlas->isImuInitialized()
+                 << ", imu_tracking_ready=" << bImuTrackingReady << endl;
             return false;
         }
         else
@@ -4497,6 +4506,25 @@ bool Tracking::IsInfoModuleRuntimeReady() const
         return true;
 
     return mpAtlas->GetCurrentMap()->isImuInitialized() &&
+           mpAtlas->GetCurrentMap()->GetIniertialBA2();
+}
+
+bool Tracking::IsImuTrackingReady() const
+{
+    if(!mpAtlas || !mpAtlas->GetCurrentMap())
+        return false;
+
+    const bool inertial_sensor =
+        mSensor == System::IMU_MONOCULAR ||
+        mSensor == System::IMU_STEREO ||
+        mSensor == System::IMU_RGBD;
+    if(!inertial_sensor)
+        return false;
+
+    if(!mpAtlas->GetCurrentMap()->isImuInitialized())
+        return false;
+
+    return !mRequireInertialBA2ForTracking ||
            mpAtlas->GetCurrentMap()->GetIniertialBA2();
 }
 
