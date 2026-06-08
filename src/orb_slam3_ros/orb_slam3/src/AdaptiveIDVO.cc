@@ -202,6 +202,7 @@ void AdaptiveLogger::Log(
                     << "image_contrast,blur_score,feature_spatial_entropy,"
                     << "tracking_time_ms,recent_local_ba_time_ms,"
                     << "number_of_keyframes,number_of_map_points,keyframe_interval,"
+                    << "imu_ready,adaptive_enabled_this_frame,adaptive_bypassed,bypass_reason,policy_type,"
                     << "kappa_top,alpha,tau0,theta_drop,keyframe_aggressiveness,"
                     << "keyframe_insertion_flag,tracking_lost_flag,ate,rpe\n";
         }
@@ -230,6 +231,11 @@ void AdaptiveLogger::Log(
             << state.number_of_keyframes << ","
             << state.number_of_map_points << ","
             << state.keyframe_interval << ","
+            << (state.imu_ready ? 1 : 0) << ","
+            << (state.adaptive_enabled_this_frame ? 1 : 0) << ","
+            << (state.adaptive_bypassed ? 1 : 0) << ","
+            << state.bypass_reason << ","
+            << AdaptivePolicyTypeName(state.policy_type) << ","
             << params.kappa_top << ","
             << params.alpha << ","
             << params.tau0 << ","

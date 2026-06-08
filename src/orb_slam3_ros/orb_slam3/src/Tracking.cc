@@ -452,6 +452,7 @@ void Tracking::LogAdaptiveFrame(double track_ms)
     mAdaptiveLastState.number_of_keyframes = mpAtlas ? static_cast<int>(mpAtlas->KeyFramesInMap()) : 0;
     mAdaptiveLastState.number_of_map_points = mpAtlas ? static_cast<int>(mpAtlas->MapPointsInMap()) : 0;
     mAdaptiveLastState.keyframe_interval = static_cast<int>(mCurrentFrame.mnId - mnLastKeyFrameId);
+    AnnotateAdaptiveState(mAdaptiveLastState);
 
     const bool trackingLost = (mState == LOST || mState == RECENTLY_LOST);
     mAdaptiveLogger.Log(mAdaptiveLastState, mAdaptiveCurrentParams, mAdaptiveKeyFrameInserted, trackingLost);
@@ -2187,6 +2188,10 @@ void Tracking::Track()
 #ifdef ORB3_USE_INFOSEL
     mAdaptiveKeyFrameInserted = false;
     mAdaptiveStateValid = false;
+    mAdaptiveGateFrameId = std::numeric_limits<long unsigned int>::max();
+    mAdaptiveGateResult = false;
+    mAdaptiveBypassedThisFrame = false;
+    mAdaptiveBypassReason.clear();
 #endif
 
     if(mpLocalMapper->mbBadImu)
@@ -3734,6 +3739,7 @@ bool Tracking::TrackLocalMap()
     // 触发条件：使用 InfoSelector 且 当前帧有位姿 且 跟踪状态为 OK
     // Visual modes are ready immediately; inertial modes wait for IMU bootstrap.
     if (mUseInfoSelector && mCurrentFrame.HasPose() && mState == OK &&
+        IsAdaptiveExecutionEnabled() &&
         IsInfoModuleRuntimeReady())
     {
         // --------- [稳健性] 每帧先清空，避免上一帧残留导致可视化“闪烁/假象” ---------
@@ -3773,7 +3779,8 @@ bool Tracking::TrackLocalMap()
         if (nBefore > 0)
         {
             InfoSelectParams frameInfoSelParams = GetCurrentInfoSelectParams();
-            if(mAdaptiveConfig.enable_adaptive_idvo &&
+            if(IsAdaptiveExecutionEnabled() &&
+               mAdaptiveConfig.enable_adaptive_idvo &&
                mAdaptiveConfig.policy_type == AdaptivePolicyType::RuleBased)
             {
                 std::vector<int> candIndices;
@@ -3802,6 +3809,7 @@ bool Tracking::TrackLocalMap()
                     nKFsAdaptive,
                     nMPsAdaptive,
                     kfIntervalAdaptive);
+                AnnotateAdaptiveState(preState);
                 UpdateAdaptiveParamsFromState(preState);
                 frameInfoSelParams = GetCurrentInfoSelectParams();
             }
@@ -3865,6 +3873,7 @@ bool Tracking::TrackLocalMap()
                 mAdaptiveLastState.selected_point_number = static_cast<int>(selected.size());
                 mAdaptiveLastState.selection_ratio =
                     static_cast<double>(selected.size()) / static_cast<double>(std::max(1, nBefore));
+                AnnotateAdaptiveState(mAdaptiveLastState);
                 mAdaptiveStateValid = true;
             }
         }
@@ -3880,6 +3889,7 @@ bool Tracking::TrackLocalMap()
                 mAdaptiveLastState.candidate_point_number = 0;
                 mAdaptiveLastState.selected_point_number = 0;
                 mAdaptiveLastState.selection_ratio = 0.0;
+                AnnotateAdaptiveState(mAdaptiveLastState);
                 mAdaptiveStateValid = true;
             }
         }
@@ -4160,7 +4170,8 @@ bool Tracking::NeedNewKeyFrame()
     }
 
 #ifdef ORB3_USE_INFOSEL
-    if(mAdaptiveConfig.enable_adaptive_idvo &&
+    if(IsAdaptiveExecutionEnabled() &&
+       mAdaptiveConfig.enable_adaptive_idvo &&
        mAdaptiveConfig.policy_type == AdaptivePolicyType::RuleBased)
     {
         const float aggressiveness = static_cast<float>(
@@ -4207,7 +4218,8 @@ bool Tracking::NeedNewKeyFrame()
         // Otherwise send a signal to interrupt BA
         #ifdef ORB3_USE_INFOSEL
         // === 信息门控：若启用，在批准新KF之前计算当前帧 Fisher 信息 ===
-        if(mAdaptiveConfig.enable_adaptive_idvo &&
+        if(IsAdaptiveExecutionEnabled() &&
+           mAdaptiveConfig.enable_adaptive_idvo &&
            mAdaptiveConfig.policy_type == AdaptivePolicyType::RuleBased &&
            mAdaptiveStateValid)
         {
@@ -4215,6 +4227,7 @@ bool Tracking::NeedNewKeyFrame()
         }
         InfoKFParams frameInfoKFParams = GetCurrentInfoKFParams();
         if(frameInfoKFParams.use && mCurrentFrame.HasPose() &&
+           IsAdaptiveExecutionEnabled() &&
            IsInfoModuleRuntimeReady())
         {
             std::vector<int> validIndices;
@@ -4295,6 +4308,7 @@ void Tracking::CreateNewKeyFrame()
     // Visual modes are ready immediately; inertial modes wait for IMU bootstrap.
     InfoKFParams frameInfoKFParams = GetCurrentInfoKFParams();
     if(frameInfoKFParams.use && mCurrentFrame.HasPose() &&
+       IsAdaptiveExecutionEnabled() &&
        IsInfoModuleRuntimeReady())
     {
         std::vector<int> validIndices;
@@ -4631,6 +4645,7 @@ void Tracking::LoadAdaptiveParams(cv::FileStorage& fSettings)
     readDouble("TrackingTimeBudget", mAdaptiveConfig.tracking_time_budget_ms);
     readDouble("SmoothFactor", mAdaptiveConfig.smooth_factor);
     readBool("Adaptive.DisableBeforeImuReady", mAdaptiveConfig.disable_before_imu_ready);
+    readInt("Adaptive.ImuReadyStableFrames", mAdaptiveConfig.imu_ready_stable_frames);
     readDouble("Adaptive.LowLogDetH", mAdaptiveConfig.low_logdet_H);
     readDouble("Adaptive.PoorConditionNumber", mAdaptiveConfig.poor_condition_number);
     readDouble("Adaptive.LowInlierRatio", mAdaptiveConfig.low_inlier_ratio);
@@ -4653,6 +4668,7 @@ void Tracking::LoadAdaptiveParams(cv::FileStorage& fSettings)
     mAdaptiveConfig.min_tau0 = std::max(1.0e-9, mAdaptiveConfig.min_tau0);
     mAdaptiveConfig.max_tau0 = std::max(mAdaptiveConfig.min_tau0, mAdaptiveConfig.max_tau0);
     mAdaptiveConfig.smooth_factor = std::max(0.0, std::min(1.0, mAdaptiveConfig.smooth_factor));
+    mAdaptiveConfig.imu_ready_stable_frames = std::max(0, mAdaptiveConfig.imu_ready_stable_frames);
 
     AdaptiveConfig fixedClampConfig = mAdaptiveConfig;
     fixedClampConfig.min_kappa_top =
@@ -4678,8 +4694,85 @@ void Tracking::LoadAdaptiveParams(cv::FileStorage& fSettings)
               << "  SmoothFactor: " << mAdaptiveConfig.smooth_factor << "\n"
               << "  Adaptive.DisableBeforeImuReady: "
               << (mAdaptiveConfig.disable_before_imu_ready ? "YES" : "NO") << "\n"
+              << "  Adaptive.ImuReadyStableFrames: "
+              << mAdaptiveConfig.imu_ready_stable_frames << "\n"
               << "  EnableAdaptiveLogging: " << (mAdaptiveConfig.enable_logging ? "YES" : "NO") << "\n"
               << "  AdaptiveLogPath: " << mAdaptiveConfig.log_path << std::endl;
+}
+
+bool Tracking::IsAdaptiveExecutionEnabled() const
+{
+    if(mAdaptiveGateFrameId == mCurrentFrame.mnId)
+        return mAdaptiveGateResult;
+
+    mAdaptiveGateFrameId = mCurrentFrame.mnId;
+    mAdaptiveBypassedThisFrame = false;
+    mAdaptiveBypassReason.clear();
+
+    if(!mAdaptiveConfig.enable_adaptive_idvo)
+    {
+        mAdaptiveGateResult = false;
+        return mAdaptiveGateResult;
+    }
+
+    const bool inertialSensor =
+        (mSensor == System::IMU_MONOCULAR ||
+         mSensor == System::IMU_STEREO ||
+         mSensor == System::IMU_RGBD);
+    if(!inertialSensor || !mAdaptiveConfig.disable_before_imu_ready)
+    {
+        mAdaptiveGateResult = true;
+        return mAdaptiveGateResult;
+    }
+
+    const bool imuReady = IsImuTrackingReady();
+    const bool bootstrapState =
+        (mState == NO_IMAGES_YET ||
+         mState == NOT_INITIALIZED ||
+         mState == RECENTLY_LOST);
+
+    if(!imuReady)
+    {
+        mAdaptiveImuReadyStableCount = 0;
+        mAdaptiveBypassedThisFrame = true;
+        mAdaptiveBypassReason = "imu_not_ready";
+        mAdaptiveGateResult = false;
+        return mAdaptiveGateResult;
+    }
+
+    if(bootstrapState)
+    {
+        mAdaptiveImuReadyStableCount = 0;
+        mAdaptiveBypassedThisFrame = true;
+        mAdaptiveBypassReason = "vi_bootstrap";
+        mAdaptiveGateResult = false;
+        return mAdaptiveGateResult;
+    }
+
+    if(mAdaptiveImuReadyStableCount < mAdaptiveConfig.imu_ready_stable_frames)
+    {
+        ++mAdaptiveImuReadyStableCount;
+        mAdaptiveBypassedThisFrame = true;
+        mAdaptiveBypassReason = "imu_ready_stabilizing";
+        mAdaptiveGateResult = false;
+        return mAdaptiveGateResult;
+    }
+
+    mAdaptiveGateResult = true;
+    return mAdaptiveGateResult;
+}
+
+void Tracking::AnnotateAdaptiveState(AdaptiveState& state) const
+{
+    const bool inertialSensor =
+        (mSensor == System::IMU_MONOCULAR ||
+         mSensor == System::IMU_STEREO ||
+         mSensor == System::IMU_RGBD);
+    state.imu_ready = inertialSensor ? IsImuTrackingReady() : true;
+    state.adaptive_enabled_this_frame = IsAdaptiveExecutionEnabled();
+    state.adaptive_bypassed = mAdaptiveBypassedThisFrame;
+    state.bypass_reason = mAdaptiveBypassReason;
+    state.policy_type = mAdaptiveConfig.policy_type;
 }
 
 void Tracking::UpdateAdaptiveParamsFromState(const AdaptiveState& state)
@@ -4688,18 +4781,8 @@ void Tracking::UpdateAdaptiveParamsFromState(const AdaptiveState& state)
     mAdaptiveStateValid = true;
 
     if(!mAdaptiveConfig.enable_adaptive_idvo ||
+       !IsAdaptiveExecutionEnabled() ||
        mAdaptiveConfig.policy_type == AdaptivePolicyType::Fixed)
-    {
-        mAdaptiveCurrentParams = mAdaptiveFixedParams;
-        return;
-    }
-
-    const bool inertialSensor =
-        (mSensor == System::IMU_MONOCULAR ||
-         mSensor == System::IMU_STEREO ||
-         mSensor == System::IMU_RGBD);
-    if(mAdaptiveConfig.disable_before_imu_ready &&
-       inertialSensor && !IsImuTrackingReady())
     {
         mAdaptiveCurrentParams = mAdaptiveFixedParams;
         return;
@@ -4739,6 +4822,7 @@ void Tracking::EnsureAdaptiveStateForLogging(double track_ms)
         mAdaptiveLastState.number_of_keyframes = mpAtlas ? static_cast<int>(mpAtlas->KeyFramesInMap()) : 0;
         mAdaptiveLastState.number_of_map_points = mpAtlas ? static_cast<int>(mpAtlas->MapPointsInMap()) : 0;
         mAdaptiveLastState.keyframe_interval = static_cast<int>(mCurrentFrame.mnId - mnLastKeyFrameId);
+        AnnotateAdaptiveState(mAdaptiveLastState);
         mAdaptiveStateValid = true;
         return;
     }
@@ -4803,6 +4887,7 @@ void Tracking::EnsureAdaptiveStateForLogging(double track_ms)
         nMPsAdaptive,
         kfIntervalAdaptive);
 
+    AnnotateAdaptiveState(state);
     UpdateAdaptiveParamsFromState(state);
 }
 
@@ -4810,6 +4895,7 @@ InfoSelectParams Tracking::GetCurrentInfoSelectParams() const
 {
     InfoSelectParams params = mInfoSelParams;
     if(mAdaptiveConfig.enable_adaptive_idvo &&
+       IsAdaptiveExecutionEnabled() &&
        mAdaptiveConfig.policy_type != AdaptivePolicyType::Fixed)
     {
         params.topK = mAdaptiveCurrentParams.kappa_top;
@@ -4822,6 +4908,7 @@ InfoKFParams Tracking::GetCurrentInfoKFParams() const
 {
     InfoKFParams params = mInfoKFParams;
     if(mAdaptiveConfig.enable_adaptive_idvo &&
+       IsAdaptiveExecutionEnabled() &&
        mAdaptiveConfig.policy_type != AdaptivePolicyType::Fixed)
     {
         params.allowBitsDrop = mAdaptiveCurrentParams.tau0;

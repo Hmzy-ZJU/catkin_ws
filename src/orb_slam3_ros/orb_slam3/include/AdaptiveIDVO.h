@@ -46,6 +46,12 @@ struct AdaptiveState
     int number_of_keyframes = 0;
     int number_of_map_points = 0;
     int keyframe_interval = 0;
+
+    bool imu_ready = false;
+    bool adaptive_enabled_this_frame = false;
+    bool adaptive_bypassed = false;
+    std::string bypass_reason;
+    AdaptivePolicyType policy_type = AdaptivePolicyType::Fixed;
 };
 
 struct AdaptiveParams
@@ -71,6 +77,7 @@ struct AdaptiveConfig
     double tracking_time_budget_ms = 30.0;
     double smooth_factor = 0.8;
     bool disable_before_imu_ready = true;
+    int imu_ready_stable_frames = 15;
 
     double low_logdet_H = 0.0;
     double poor_condition_number = 1.0e6;

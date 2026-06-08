@@ -160,7 +160,7 @@ generate_config() {
     *) return 1 ;;
   esac
   awk '
-    !/^[[:space:]]*(InfoSelector\.TopK|EnableAdaptiveIDVO|AdaptivePolicyType|MinKappaTop|MaxKappaTop|MinTau0|MaxTau0|TrackingTimeBudget|SmoothFactor|EnableAdaptiveLogging|AdaptiveLogPath|Adaptive\.DisableBeforeImuReady)[[:space:]]*:/
+    !/^[[:space:]]*(InfoSelector\.TopK|EnableAdaptiveIDVO|AdaptivePolicyType|MinKappaTop|MaxKappaTop|MinTau0|MaxTau0|TrackingTimeBudget|SmoothFactor|EnableAdaptiveLogging|AdaptiveLogPath|Adaptive\.DisableBeforeImuReady|Adaptive\.ImuReadyStableFrames)[[:space:]]*:/
   ' "$base" > "$out"
   cat >> "$out" <<EOF
 
@@ -174,6 +174,7 @@ MaxTau0: ${MAX_TAU0:-5.0}
 TrackingTimeBudget: ${TRACKING_TIME_BUDGET:-30.0}
 SmoothFactor: ${SMOOTH_FACTOR:-0.8}
 Adaptive.DisableBeforeImuReady: ${ADAPTIVE_DISABLE_BEFORE_IMU_READY:-1}
+Adaptive.ImuReadyStableFrames: ${ADAPTIVE_IMU_READY_STABLE_FRAMES:-15}
 EnableAdaptiveLogging: ${ENABLE_ADAPTIVE_LOGGING}
 AdaptiveLogPath: "${adaptive_csv}"
 EOF

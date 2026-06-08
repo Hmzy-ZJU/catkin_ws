@@ -22,6 +22,8 @@
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/features2d/features2d.hpp>
+#include <limits>
+#include <string>
 
 #include "Viewer.h"
 #include "FrameDrawer.h"
@@ -432,11 +434,18 @@ protected:
     bool mAdaptiveStateValid = false;
     bool mAdaptiveKeyFrameInserted = false;
     double mAdaptiveLastTrackTimeMs = 0.0;
+    mutable int mAdaptiveImuReadyStableCount = 0;
+    mutable bool mAdaptiveBypassedThisFrame = false;
+    mutable std::string mAdaptiveBypassReason;
+    mutable long unsigned int mAdaptiveGateFrameId = std::numeric_limits<long unsigned int>::max();
+    mutable bool mAdaptiveGateResult = false;
 
     void LoadInfoParams(cv::FileStorage& fSettings);
     void LoadAdaptiveParams(cv::FileStorage& fSettings);
     void InitializeAdaptiveParams();
     bool IsInfoModuleRuntimeReady() const;
+    bool IsAdaptiveExecutionEnabled() const;
+    void AnnotateAdaptiveState(AdaptiveState& state) const;
     void UpdateAdaptiveParamsFromState(const AdaptiveState& state);
     void EnsureAdaptiveStateForLogging(double track_ms);
     InfoSelectParams GetCurrentInfoSelectParams() const;

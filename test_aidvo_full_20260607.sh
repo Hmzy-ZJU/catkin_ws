@@ -219,7 +219,7 @@ prepare_aidvo_config() {
   esac
 
   awk '
-    !/^[[:space:]]*(InfoSelector\.TopK|EnableAdaptiveIDVO|AdaptivePolicyType|MinKappaTop|MaxKappaTop|MinTau0|MaxTau0|TrackingTimeBudget|SmoothFactor|EnableAdaptiveLogging|AdaptiveLogPath|Adaptive\.DisableBeforeImuReady|Adaptive\.LowLogDetH|Adaptive\.PoorConditionNumber|Adaptive\.LowInlierRatio|Adaptive\.BlurThreshold)[[:space:]]*:/
+    !/^[[:space:]]*(InfoSelector\.TopK|EnableAdaptiveIDVO|AdaptivePolicyType|MinKappaTop|MaxKappaTop|MinTau0|MaxTau0|TrackingTimeBudget|SmoothFactor|EnableAdaptiveLogging|AdaptiveLogPath|Adaptive\.DisableBeforeImuReady|Adaptive\.ImuReadyStableFrames|Adaptive\.LowLogDetH|Adaptive\.PoorConditionNumber|Adaptive\.LowInlierRatio|Adaptive\.BlurThreshold)[[:space:]]*:/
   ' "$base_config" > "$output_config"
 
   if [ -n "$forced_topk" ]; then
@@ -238,6 +238,7 @@ MaxTau0: ${MAX_TAU0:-5.0}
 TrackingTimeBudget: ${TRACKING_TIME_BUDGET:-30.0}
 SmoothFactor: ${SMOOTH_FACTOR:-0.8}
 Adaptive.DisableBeforeImuReady: ${ADAPTIVE_DISABLE_BEFORE_IMU_READY:-1}
+Adaptive.ImuReadyStableFrames: ${ADAPTIVE_IMU_READY_STABLE_FRAMES:-15}
 EnableAdaptiveLogging: ${ENABLE_ADAPTIVE_LOGGING:-1}
 AdaptiveLogPath: "${adaptive_log}"
 EOF
