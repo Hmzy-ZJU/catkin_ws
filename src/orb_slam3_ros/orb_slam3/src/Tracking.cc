@@ -2339,10 +2339,25 @@ void Tracking::Track()
 
                 if (!bOK)
                 {
+                    const bool bInertialBootstrapNoReset =
+                        (mSensor==System::IMU_MONOCULAR ||
+                         mSensor==System::IMU_STEREO ||
+                         mSensor==System::IMU_RGBD) &&
+                        !pCurrentMap->isImuInitialized() &&
+                        !mResetActiveMapBeforeImuInit;
+
                     if ( mCurrentFrame.mnId<=(mnLastRelocFrameId+mnFramesToResetIMU) &&
                          (mSensor==System::IMU_MONOCULAR || mSensor==System::IMU_STEREO || mSensor == System::IMU_RGBD))
                     {
-                        mState = LOST;
+                        if(bInertialBootstrapNoReset)
+                        {
+                            mState = RECENTLY_LOST;
+                            mTimeStampLost = mCurrentFrame.mTimeStamp;
+                        }
+                        else
+                        {
+                            mState = LOST;
+                        }
                     }
                     else if(pCurrentMap->KeyFramesInMap()>10)
                     {
@@ -2373,8 +2388,17 @@ void Tracking::Track()
 
                         if (mCurrentFrame.mTimeStamp-mTimeStampLost>time_recently_lost)
                         {
-                            mState = LOST;
-                            Verbose::PrintMess("Track Lost...", Verbose::VERBOSITY_NORMAL);
+                            if(!pCurrentMap->isImuInitialized() && !mResetActiveMapBeforeImuInit)
+                            {
+                                mState = RECENTLY_LOST;
+                                mTimeStampLost = mCurrentFrame.mTimeStamp;
+                                Verbose::PrintMess("Keeping recent-lost state during visual-inertial bootstrap...", Verbose::VERBOSITY_NORMAL);
+                            }
+                            else
+                            {
+                                mState = LOST;
+                                Verbose::PrintMess("Track Lost...", Verbose::VERBOSITY_NORMAL);
+                            }
                             bOK=false;
                         }
                     }
@@ -2405,20 +2429,34 @@ void Tracking::Track()
 
                     Verbose::PrintMess("A new map is started...", Verbose::VERBOSITY_NORMAL);
 
-                    if (pCurrentMap->KeyFramesInMap()<10)
+                    if((mSensor == System::IMU_MONOCULAR ||
+                        mSensor == System::IMU_STEREO ||
+                        mSensor == System::IMU_RGBD) &&
+                       !pCurrentMap->isImuInitialized() &&
+                       !mResetActiveMapBeforeImuInit)
                     {
-                        mpSystem->ResetActiveMap();
-                        Verbose::PrintMess("Reseting current map...", Verbose::VERBOSITY_NORMAL);
-                    }else
-                        CreateMapInAtlas();
+                        mState = RECENTLY_LOST;
+                        mTimeStampLost = mCurrentFrame.mTimeStamp;
+                        Verbose::PrintMess("Keeping active map instead of starting a new map during visual-inertial bootstrap...", Verbose::VERBOSITY_NORMAL);
+                    }
+                    else
+                    {
 
-                    if(mpLastKeyFrame)
-                        mpLastKeyFrame = static_cast<KeyFrame*>(NULL);
+                        if (pCurrentMap->KeyFramesInMap()<10)
+                        {
+                            mpSystem->ResetActiveMap();
+                            Verbose::PrintMess("Reseting current map...", Verbose::VERBOSITY_NORMAL);
+                        }else
+                            CreateMapInAtlas();
 
-                    Verbose::PrintMess("done", Verbose::VERBOSITY_NORMAL);
-                    RecordTrackTime(t_start);
+                        if(mpLastKeyFrame)
+                            mpLastKeyFrame = static_cast<KeyFrame*>(NULL);
 
-                    return;
+                        Verbose::PrintMess("done", Verbose::VERBOSITY_NORMAL);
+                        RecordTrackTime(t_start);
+
+                        return;
+                    }
                 }
             }
 
