@@ -69,7 +69,8 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
     mbOnlyTracking(false), mbMapUpdated(false), mbVO(false), mpORBVocabulary(pVoc), mpKeyFrameDB(pKFDB),
     mbReadyToInitializate(false), mpSystem(pSys), mpViewer(NULL), bStepByStep(false),
     mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpAtlas(pAtlas), mnLastRelocFrameId(0), time_recently_lost(5.0),
-    mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), mpLastKeyFrame(static_cast<KeyFrame*>(NULL))
+    mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), mpLastKeyFrame(static_cast<KeyFrame*>(NULL)),
+    mResetActiveMapBeforeImuInit(true)
 {
     // Load camera parameters from settings file
     // Step 1 从配置文件中加载相机参数
@@ -78,7 +79,15 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
         #ifdef ORB3_USE_INFOSEL
         cv::FileStorage fSettings(strSettingPath, cv::FileStorage::READ);
         if(fSettings.isOpened())
+        {
             LoadInfoParams(fSettings);
+            cv::FileNode resetNode = fSettings["IMU.ResetActiveMapBeforeInit"];
+            if(!resetNode.empty())
+                mResetActiveMapBeforeImuInit = ((int)resetNode != 0);
+            cv::FileNode recentLostNode = fSettings["IMU.RecentlyLostTime"];
+            if(!recentLostNode.empty())
+                time_recently_lost = (double)recentLostNode;
+        }
         #endif
     }
     else{
@@ -107,6 +116,12 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
             }
 
             mnFramesToResetIMU = mMaxFrames;
+            cv::FileNode resetNode = fSettings["IMU.ResetActiveMapBeforeInit"];
+            if(!resetNode.empty())
+                mResetActiveMapBeforeImuInit = ((int)resetNode != 0);
+            cv::FileNode recentLostNode = fSettings["IMU.RecentlyLostTime"];
+            if(!recentLostNode.empty())
+                time_recently_lost = (double)recentLostNode;
         }
 
         if(!b_parse_cam || !b_parse_orb || !b_parse_imu)
@@ -2623,8 +2638,15 @@ void Tracking::Track()
                 Verbose::PrintMess("Track lost for less than one second...", Verbose::VERBOSITY_NORMAL);
                 if(!pCurrentMap->isImuInitialized() || !pCurrentMap->GetIniertialBA2())
                 {
-                    cout << "IMU is not or recently initialized. Reseting active map..." << endl;
-                    mpSystem->ResetActiveMap();
+                    if(mResetActiveMapBeforeImuInit)
+                    {
+                        cout << "IMU is not or recently initialized. Reseting active map..." << endl;
+                        mpSystem->ResetActiveMap();
+                    }
+                    else
+                    {
+                        cout << "IMU is not or recently initialized. Keeping active map for visual-inertial bootstrap..." << endl;
+                    }
                 }
 
                 mState=RECENTLY_LOST;

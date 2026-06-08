@@ -349,6 +349,7 @@ protected:
     float mImuFreq;
     double mImuPer;
     bool mInsertKFsLost;
+    bool mResetActiveMapBeforeImuInit;
 
     //New KeyFrame rules (according to fps)
     int mMinFrames;

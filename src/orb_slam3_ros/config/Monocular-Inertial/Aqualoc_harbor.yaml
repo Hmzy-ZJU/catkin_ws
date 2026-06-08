@@ -42,6 +42,9 @@ IMU.GyroWalk: 0.00005
 IMU.AccWalk: 0.001
 IMU.Frequency: 200.0
 timeshift_cam_imu: -0.0403806549886
+IMU.InsertKFsWhenLost: 1
+IMU.ResetActiveMapBeforeInit: 0
+IMU.RecentlyLostTime: 10.0
 
 #==================== ORB Extractor ====================
 ORBextractor.nFeatures: 900
