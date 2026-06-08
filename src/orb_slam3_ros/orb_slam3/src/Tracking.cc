@@ -34,6 +34,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <sys/resource.h>   // Getrusage (Linux)
@@ -70,7 +71,7 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
     mbReadyToInitializate(false), mpSystem(pSys), mpViewer(NULL), bStepByStep(false),
     mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpAtlas(pAtlas), mnLastRelocFrameId(0), time_recently_lost(5.0),
     mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), mpLastKeyFrame(static_cast<KeyFrame*>(NULL)),
-    mResetActiveMapBeforeImuInit(true)
+    mResetActiveMapBeforeImuInit(true), mMinInitTrackedPoints(50), mMinTrackLocalMapInliersBeforeImuInit(50)
 {
     // Load camera parameters from settings file
     // Step 1 从配置文件中加载相机参数
@@ -87,6 +88,12 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
             cv::FileNode recentLostNode = fSettings["IMU.RecentlyLostTime"];
             if(!recentLostNode.empty())
                 time_recently_lost = (double)recentLostNode;
+            cv::FileNode minInitNode = fSettings["IMU.MinInitTrackedPoints"];
+            if(!minInitNode.empty())
+                mMinInitTrackedPoints = std::max(10, (int)minInitNode);
+            cv::FileNode minTrackNode = fSettings["IMU.MinTrackLocalMapInliersBeforeInit"];
+            if(!minTrackNode.empty())
+                mMinTrackLocalMapInliersBeforeImuInit = std::max(10, (int)minTrackNode);
         }
         #endif
     }
@@ -122,6 +129,12 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
             cv::FileNode recentLostNode = fSettings["IMU.RecentlyLostTime"];
             if(!recentLostNode.empty())
                 time_recently_lost = (double)recentLostNode;
+            cv::FileNode minInitNode = fSettings["IMU.MinInitTrackedPoints"];
+            if(!minInitNode.empty())
+                mMinInitTrackedPoints = std::max(10, (int)minInitNode);
+            cv::FileNode minTrackNode = fSettings["IMU.MinTrackLocalMapInliersBeforeInit"];
+            if(!minTrackNode.empty())
+                mMinTrackLocalMapInliersBeforeImuInit = std::max(10, (int)minTrackNode);
         }
 
         if(!b_parse_cam || !b_parse_orb || !b_parse_imu)
@@ -3215,7 +3228,16 @@ void Tracking::CreateInitialMapMonocular()
     else
         invMedianDepth = 1.0f/medianDepth;
 
-    if(medianDepth<0 || pKFcur->TrackedMapPoints(1)<50) // TODO Check, originally 100 tracks
+    const int initTrackedPoints = pKFcur->TrackedMapPoints(1);
+    const int minInitTrackedPoints = (mSensor == System::IMU_MONOCULAR) ? mMinInitTrackedPoints : 50;
+    if(mSensor == System::IMU_MONOCULAR)
+    {
+        cout << "Monocular inertial init check: medianDepth=" << medianDepth
+             << ", tracked=" << initTrackedPoints
+             << ", min_tracked=" << minInitTrackedPoints << endl;
+    }
+
+    if(medianDepth<0 || initTrackedPoints<minInitTrackedPoints) // TODO Check, originally 100 tracks
     {
         Verbose::PrintMess("Wrong initialization, reseting...", Verbose::VERBOSITY_QUIET);
         mpSystem->ResetActiveMap();
@@ -3936,8 +3958,12 @@ bool Tracking::TrackLocalMap()
 
     if (mSensor == System::IMU_MONOCULAR)
     {
-        if((mnMatchesInliers<15 && mpAtlas->isImuInitialized())||(mnMatchesInliers<50 && !mpAtlas->isImuInitialized()))
+        const int minInliers = mpAtlas->isImuInitialized() ? 15 : mMinTrackLocalMapInliersBeforeImuInit;
+        if(mnMatchesInliers<minInliers)
         {
+            cout << "TrackLocalMap fail: IMU_MONOCULAR inliers=" << mnMatchesInliers
+                 << ", min_inliers=" << minInliers
+                 << ", imu_initialized=" << mpAtlas->isImuInitialized() << endl;
             return false;
         }
         else

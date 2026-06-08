@@ -350,6 +350,8 @@ protected:
     double mImuPer;
     bool mInsertKFsLost;
     bool mResetActiveMapBeforeImuInit;
+    int mMinInitTrackedPoints;
+    int mMinTrackLocalMapInliersBeforeImuInit;
 
     //New KeyFrame rules (according to fps)
     int mMinFrames;

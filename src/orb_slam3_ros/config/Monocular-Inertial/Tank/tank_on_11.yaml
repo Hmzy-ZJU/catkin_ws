@@ -38,13 +38,15 @@ timeshift_cam_imu: 0.0
 IMU.InsertKFsWhenLost: 1
 IMU.ResetActiveMapBeforeInit: 0
 IMU.RecentlyLostTime: 10.0
+IMU.MinInitTrackedPoints: 30
+IMU.MinTrackLocalMapInliersBeforeInit: 25
 
 
-ORBextractor.nFeatures: 900
+ORBextractor.nFeatures: 1600
 ORBextractor.scaleFactor: 1.2
 ORBextractor.nLevels: 8
-ORBextractor.iniThFAST: 12
-ORBextractor.minThFAST: 7
+ORBextractor.iniThFAST: 10
+ORBextractor.minThFAST: 5
 
 Viewer.KeyFrameSize: 0.05
 Viewer.KeyFrameLineWidth: 1.0
@@ -69,7 +71,7 @@ uwfusion.exposed_avg: 0.5
 uwfusion.exposed_sigma: 0.25
 
 InfoSelector.Enable: 1
-InfoSelector.TopK: 95
+InfoSelector.TopK: 220
 InfoSelector.UseUniform: 1
 InfoSelector.w_uniform: 0.12
 InfoSelector.MinPxDist: 7
