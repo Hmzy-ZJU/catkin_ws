@@ -70,6 +70,7 @@ struct AdaptiveConfig
     double max_tau0 = 2.0;
     double tracking_time_budget_ms = 30.0;
     double smooth_factor = 0.8;
+    bool disable_before_imu_ready = true;
 
     double low_logdet_H = 0.0;
     double poor_condition_number = 1.0e6;

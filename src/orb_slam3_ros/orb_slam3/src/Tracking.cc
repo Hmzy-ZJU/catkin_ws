@@ -4630,6 +4630,7 @@ void Tracking::LoadAdaptiveParams(cv::FileStorage& fSettings)
     readDouble("MaxTau0", mAdaptiveConfig.max_tau0);
     readDouble("TrackingTimeBudget", mAdaptiveConfig.tracking_time_budget_ms);
     readDouble("SmoothFactor", mAdaptiveConfig.smooth_factor);
+    readBool("Adaptive.DisableBeforeImuReady", mAdaptiveConfig.disable_before_imu_ready);
     readDouble("Adaptive.LowLogDetH", mAdaptiveConfig.low_logdet_H);
     readDouble("Adaptive.PoorConditionNumber", mAdaptiveConfig.poor_condition_number);
     readDouble("Adaptive.LowInlierRatio", mAdaptiveConfig.low_inlier_ratio);
@@ -4675,6 +4676,8 @@ void Tracking::LoadAdaptiveParams(cv::FileStorage& fSettings)
               << mAdaptiveConfig.max_tau0 << "\n"
               << "  TrackingTimeBudget(ms): " << mAdaptiveConfig.tracking_time_budget_ms << "\n"
               << "  SmoothFactor: " << mAdaptiveConfig.smooth_factor << "\n"
+              << "  Adaptive.DisableBeforeImuReady: "
+              << (mAdaptiveConfig.disable_before_imu_ready ? "YES" : "NO") << "\n"
               << "  EnableAdaptiveLogging: " << (mAdaptiveConfig.enable_logging ? "YES" : "NO") << "\n"
               << "  AdaptiveLogPath: " << mAdaptiveConfig.log_path << std::endl;
 }
@@ -4686,6 +4689,17 @@ void Tracking::UpdateAdaptiveParamsFromState(const AdaptiveState& state)
 
     if(!mAdaptiveConfig.enable_adaptive_idvo ||
        mAdaptiveConfig.policy_type == AdaptivePolicyType::Fixed)
+    {
+        mAdaptiveCurrentParams = mAdaptiveFixedParams;
+        return;
+    }
+
+    const bool inertialSensor =
+        (mSensor == System::IMU_MONOCULAR ||
+         mSensor == System::IMU_STEREO ||
+         mSensor == System::IMU_RGBD);
+    if(mAdaptiveConfig.disable_before_imu_ready &&
+       inertialSensor && !IsImuTrackingReady())
     {
         mAdaptiveCurrentParams = mAdaptiveFixedParams;
         return;

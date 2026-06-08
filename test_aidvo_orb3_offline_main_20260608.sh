@@ -17,6 +17,7 @@ BAG_START="${BAG_START:-0}"
 BAG_DURATION="${BAG_DURATION:-0}"
 MAX_FRAMES="${MAX_FRAMES:-0}"
 ENABLE_ADAPTIVE_LOGGING="${ENABLE_ADAPTIVE_LOGGING:-1}"
+MIN_TRAJECTORY_COMPLETENESS="${MIN_TRAJECTORY_COMPLETENESS:-70.0}"
 
 VOCAB="${VOCAB:-$WS/src/orb_slam3_ros/orb_slam3/Vocabulary/ORBvoc.txt.bin}"
 RESULT_ROOT="$WS/results/aidvo_offline_main_${RUN_TAG}"
@@ -159,7 +160,7 @@ generate_config() {
     *) return 1 ;;
   esac
   awk '
-    !/^[[:space:]]*(InfoSelector\.TopK|EnableAdaptiveIDVO|AdaptivePolicyType|MinKappaTop|MaxKappaTop|MinTau0|MaxTau0|TrackingTimeBudget|SmoothFactor|EnableAdaptiveLogging|AdaptiveLogPath)[[:space:]]*:/
+    !/^[[:space:]]*(InfoSelector\.TopK|EnableAdaptiveIDVO|AdaptivePolicyType|MinKappaTop|MaxKappaTop|MinTau0|MaxTau0|TrackingTimeBudget|SmoothFactor|EnableAdaptiveLogging|AdaptiveLogPath|Adaptive\.DisableBeforeImuReady)[[:space:]]*:/
   ' "$base" > "$out"
   cat >> "$out" <<EOF
 
@@ -172,6 +173,7 @@ MinTau0: ${MIN_TAU0:-0.1}
 MaxTau0: ${MAX_TAU0:-5.0}
 TrackingTimeBudget: ${TRACKING_TIME_BUDGET:-30.0}
 SmoothFactor: ${SMOOTH_FACTOR:-0.8}
+Adaptive.DisableBeforeImuReady: ${ADAPTIVE_DISABLE_BEFORE_IMU_READY:-1}
 EnableAdaptiveLogging: ${ENABLE_ADAPTIVE_LOGGING}
 AdaptiveLogPath: "${adaptive_csv}"
 EOF
@@ -264,6 +266,13 @@ PY
   if [ "$traj_poses" -lt "${MIN_TRAJECTORY_POSES:-20}" ]; then
     status="VALIDATION_FAIL"
     notes="too_few_trajectory_poses"
+  elif ! python3 - "$completeness" "$MIN_TRAJECTORY_COMPLETENESS" <<'PY'
+import sys
+sys.exit(0 if float(sys.argv[1]) >= float(sys.argv[2]) else 1)
+PY
+  then
+    status="VALIDATION_FAIL"
+    notes="low_trajectory_completeness_${completeness}_lt_${MIN_TRAJECTORY_COMPLETENESS}"
   elif [ "$exit_code" -ne 0 ]; then
     status="PASS_WITH_EXIT_${exit_code}"
     notes="trajectory_saved_but_runner_exit_$exit_code"
@@ -293,6 +302,7 @@ main() {
   log "BAG_START=$BAG_START"
   log "BAG_DURATION=$BAG_DURATION"
   log "MAX_FRAMES=$MAX_FRAMES"
+  log "MIN_TRAJECTORY_COMPLETENESS=$MIN_TRAJECTORY_COMPLETENESS"
   log "RESULT_ROOT=$RESULT_ROOT"
   build_workspace
 
