@@ -87,6 +87,9 @@ dataset_root() {
 }
 
 bag_override() {
+  if [ "$RUN_ALL_BAGS" = "1" ]; then
+    return 0
+  fi
   case "$1" in
     euroc) echo "$EUROC_BAG" ;;
     tank) echo "$TANK_BAG" ;;
@@ -1140,6 +1143,9 @@ preflight() {
   log "RUN_TIMEOUT=$RUN_TIMEOUT"
   log "SAVE_TRAJ_TIMEOUT=$SAVE_TRAJ_TIMEOUT"
   log "EVO_TIMEOUT=$EVO_TIMEOUT"
+  log "EUROC_BAG=${EUROC_BAG:-}"
+  log "TANK_BAG=${TANK_BAG:-}"
+  log "HARBOR_BAG=${HARBOR_BAG:-}"
   log "MIN_TRAJECTORY_POSES=$MIN_TRAJECTORY_POSES"
   log "MIN_TRAJECTORY_COMPLETENESS=$MIN_TRAJECTORY_COMPLETENESS"
   log "MIN_EVO_PAIRS=$MIN_EVO_PAIRS"

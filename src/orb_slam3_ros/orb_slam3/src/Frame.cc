@@ -1043,7 +1043,12 @@ void Frame::ComputeStereoMatches() try
         if(!std::isfinite(kp.pt.y))
             continue;
 
-        const float r = 2.0f * mvScaleFactors[kp.octave];
+        // Tank stereo is approximately rectified, but the left/right
+        // keypoint rows can still differ by a few pixels after decompression
+        // and underwater image processing.  A slightly wider row band keeps
+        // enough candidates for depth while descriptor and patch checks below
+        // still reject inconsistent matches.
+        const float r = 4.0f * mvScaleFactors[kp.octave];
         const int minr = static_cast<int>(std::floor(kp.pt.y - r));
         const int maxr = static_cast<int>(std::ceil(kp.pt.y + r));
         for(int yi = minr; yi <= maxr; ++yi)
