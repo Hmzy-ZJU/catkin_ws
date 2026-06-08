@@ -230,25 +230,27 @@ void LocalMapping::Run()
                             if (mTinit>5.0f)
                             {
                                 cout << "start VIBA 1" << endl;
-                                mpCurrentKeyFrame->GetMap()->SetIniertialBA1();
-                                if (mbMonocular)
-                                    InitializeIMU(1.f, 1e5, true);
+                                const bool ok = InitializeIMU(1.f, 1e5, true);
+                                if(ok)
+                                {
+                                    mpCurrentKeyFrame->GetMap()->SetIniertialBA1();
+                                    cout << "end VIBA 1" << endl;
+                                }
                                 else
-                                    InitializeIMU(1.f, 1e5, true);
-
-                                cout << "end VIBA 1" << endl;
+                                    cout << "abort VIBA 1" << endl;
                             }
                         }
                         else if(!mpCurrentKeyFrame->GetMap()->GetIniertialBA2()){
                             if (mTinit>15.0f){
                                 cout << "start VIBA 2" << endl;
-                                mpCurrentKeyFrame->GetMap()->SetIniertialBA2();
-                                if (mbMonocular)
-                                    InitializeIMU(0.f, 0.f, true);
+                                const bool ok = InitializeIMU(0.f, 0.f, true);
+                                if(ok)
+                                {
+                                    mpCurrentKeyFrame->GetMap()->SetIniertialBA2();
+                                    cout << "end VIBA 2" << endl;
+                                }
                                 else
-                                    InitializeIMU(0.f, 0.f, true);
-
-                                cout << "end VIBA 2" << endl;
+                                    cout << "abort VIBA 2" << endl;
                             }
                         }
 
@@ -1195,10 +1197,10 @@ bool LocalMapping::isFinished()
     return mbFinished;
 }
 
-void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
+bool LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
 {
     if (mbResetRequested)
-        return;
+        return false;
 
     float minTime;
     int nMinKF;
@@ -1215,7 +1217,7 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
 
 
     if(mpAtlas->KeyFramesInMap()<nMinKF)
-        return;
+        return false;
 
     // Retrieve all keyframe in temporal order
     list<KeyFrame*> lpKF;
@@ -1229,11 +1231,11 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
     vector<KeyFrame*> vpKF(lpKF.begin(),lpKF.end());
 
     if(vpKF.size()<nMinKF)
-        return;
+        return false;
 
     mFirstTs=vpKF.front()->mTimeStamp;
     if(mpCurrentKeyFrame->mTimeStamp-mFirstTs<minTime)
-        return;
+        return false;
 
     bInitializing = true;
 
@@ -1299,7 +1301,7 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
     {
         cout << "scale too small" << endl;
         bInitializing=false;
-        return;
+        return false;
     }
 
     // Before this line we are not changing the map
@@ -1450,7 +1452,7 @@ void LocalMapping::InitializeIMU(float priorG, float priorA, bool bFIBA)
 
     mpCurrentKeyFrame->GetMap()->IncreaseChangeIndex();
 
-    return;
+    return true;
 }
 
 void LocalMapping::ScaleRefinement()
