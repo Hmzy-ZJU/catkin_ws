@@ -3111,6 +3111,10 @@ void Tracking::MonocularInitialization()
         // Set Reference Frame
         if(mCurrentFrame.mvKeys.size()>100)
         {
+            cout << "Monocular init reference selected: frame=" << mCurrentFrame.mnId
+                 << ", features=" << mCurrentFrame.mvKeys.size()
+                 << ", timestamp=" << fixed << setprecision(9) << mCurrentFrame.mTimeStamp
+                 << endl;
             mInitialFrame = Frame(mCurrentFrame);
             mLastFrame = Frame(mCurrentFrame);
             mvbPrevMatched.resize(mCurrentFrame.mvKeysUn.size());
@@ -3139,6 +3143,10 @@ void Tracking::MonocularInitialization()
     {
         if (((int)mCurrentFrame.mvKeys.size()<=100)||((mSensor == System::IMU_MONOCULAR)&&(mLastFrame.mTimeStamp-mInitialFrame.mTimeStamp>1.0)))
         {
+            cout << "Monocular init reset: frame=" << mCurrentFrame.mnId
+                 << ", features=" << mCurrentFrame.mvKeys.size()
+                 << ", dt=" << (mCurrentFrame.mTimeStamp - mInitialFrame.mTimeStamp)
+                 << endl;
             mbReadyToInitializate = false;
 
             return;
@@ -3151,6 +3159,10 @@ void Tracking::MonocularInitialization()
         // Check if there are enough correspondences
         if(nmatches<100)
         {
+            cout << "Monocular init insufficient matches: frame=" << mCurrentFrame.mnId
+                 << ", matches=" << nmatches
+                 << ", features=" << mCurrentFrame.mvKeys.size()
+                 << endl;
             mbReadyToInitializate = false;
             return;
         }
@@ -3175,6 +3187,11 @@ void Tracking::MonocularInitialization()
             mCurrentFrame.SetPose(Tcw * Tc0w);
 
             CreateInitialMapMonocular();
+        }
+        else
+        {
+            cout << "Monocular init reconstruction failed: frame=" << mCurrentFrame.mnId
+                 << ", matches=" << nmatches << endl;
         }
     }
 }
@@ -3348,6 +3365,10 @@ void Tracking::CreateMapInAtlas()
 
     mnInitialFrameId = mCurrentFrame.mnId+1;
     mState = NO_IMAGES_YET;
+    cout << "CreateMapInAtlas: new map allocated, next_initial_frame_id="
+         << mnInitialFrameId
+         << ", current_frame_id=" << mCurrentFrame.mnId
+         << ", sensor=" << mSensor << endl;
 
     // Restart the variable with information about the last KF
     mbVelocity = false;

@@ -84,6 +84,10 @@ void setup_publishers(ros::NodeHandle &node_handler, image_transport::ImageTrans
 
 void publish_topics(ros::Time msg_time, Eigen::Vector3f Wbb)
 {
+    cv::Mat current_frame = pSLAM->GetCurrentFrame();
+    if(!current_frame.empty())
+        publish_tracking_img(current_frame, msg_time);
+
     Sophus::SE3f Twc = pSLAM->GetCamTwc();
 
     if (Twc.translation().array().isNaN()[0] || Twc.rotationMatrix().array().isNaN()(0,0)) // avoid publishing NaN
@@ -92,8 +96,6 @@ void publish_topics(ros::Time msg_time, Eigen::Vector3f Wbb)
     // Common topics
     publish_camera_pose(Twc, msg_time);
     publish_tf_transform(Twc, world_frame_id, cam_frame_id, msg_time);
-
-    publish_tracking_img(pSLAM->GetCurrentFrame(), msg_time);
 
     publish_keypoints(pSLAM->GetTrackedMapPoints(), pSLAM->GetTrackedKeyPoints(), msg_time);
 
