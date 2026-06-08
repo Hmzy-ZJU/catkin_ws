@@ -71,7 +71,7 @@ IMU.Frequency: 333.0
 timeshift_cam_imu: 0.0
 IMU.InsertKFsWhenLost: 1
 IMU.ResetActiveMapBeforeInit: 0
-IMU.RecentlyLostTime: 10.0
+IMU.RecentlyLostTime: 3.0
 IMU.RequireBA2ForTracking: 1
 
 ORBextractor.nFeatures: 1800

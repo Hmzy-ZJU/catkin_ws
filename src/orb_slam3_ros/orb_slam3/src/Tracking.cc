@@ -2408,6 +2408,10 @@ void Tracking::Track()
 
                         if (mCurrentFrame.mTimeStamp-mTimeStampLost>time_recently_lost)
                         {
+                            cout << "Recently lost timeout: dt="
+                                 << (mCurrentFrame.mTimeStamp-mTimeStampLost)
+                                 << " s, threshold=" << time_recently_lost
+                                 << " s" << endl;
                             if(!pCurrentMap->isImuInitialized() && !mResetActiveMapBeforeImuInit)
                             {
                                 mState = RECENTLY_LOST;
@@ -2467,7 +2471,11 @@ void Tracking::Track()
                             mpSystem->ResetActiveMap();
                             Verbose::PrintMess("Reseting current map...", Verbose::VERBOSITY_NORMAL);
                         }else
+                        {
+                            cout << "Starting new submap after tracking loss. previous_map_keyframes="
+                                 << pCurrentMap->KeyFramesInMap() << endl;
                             CreateMapInAtlas();
+                        }
 
                         if(mpLastKeyFrame)
                             mpLastKeyFrame = static_cast<KeyFrame*>(NULL);

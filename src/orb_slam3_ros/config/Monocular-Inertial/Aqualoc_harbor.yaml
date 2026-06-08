@@ -44,9 +44,9 @@ IMU.Frequency: 200.0
 timeshift_cam_imu: -0.0403806549886
 IMU.InsertKFsWhenLost: 1
 IMU.ResetActiveMapBeforeInit: 0
-IMU.RecentlyLostTime: 10.0
+IMU.RecentlyLostTime: 3.0
 IMU.MinInitTrackedPoints: 30
-IMU.MinTrackLocalMapInliersBeforeInit: 25
+IMU.MinTrackLocalMapInliersBeforeInit: 20
 IMU.RequireBA2ForTracking: 1
 
 #==================== ORB Extractor ====================
