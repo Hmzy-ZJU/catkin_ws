@@ -353,6 +353,9 @@ protected:
     int mMinInitTrackedPoints;
     int mMinTrackLocalMapInliersBeforeImuInit;
     bool mRequireInertialBA2ForTracking;
+    int mMinMonoInitMatches;
+    double mMonoInitMaxTime;
+    bool mKeepInitReferenceOnLowMatches;
 
     //New KeyFrame rules (according to fps)
     int mMinFrames;

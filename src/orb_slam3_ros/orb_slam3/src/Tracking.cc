@@ -72,7 +72,8 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
     mpFrameDrawer(pFrameDrawer), mpMapDrawer(pMapDrawer), mpAtlas(pAtlas), mnLastRelocFrameId(0), time_recently_lost(5.0),
     mnInitialFrameId(0), mbCreatedMap(false), mnFirstFrameId(0), mpCamera2(nullptr), mpLastKeyFrame(static_cast<KeyFrame*>(NULL)),
     mResetActiveMapBeforeImuInit(true), mMinInitTrackedPoints(50), mMinTrackLocalMapInliersBeforeImuInit(50),
-    mRequireInertialBA2ForTracking(false)
+    mRequireInertialBA2ForTracking(false), mMinMonoInitMatches(100), mMonoInitMaxTime(1.0),
+    mKeepInitReferenceOnLowMatches(false)
 {
     // Load camera parameters from settings file
     // Step 1 从配置文件中加载相机参数
@@ -98,6 +99,15 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
             cv::FileNode requireBA2Node = fSettings["IMU.RequireBA2ForTracking"];
             if(!requireBA2Node.empty())
                 mRequireInertialBA2ForTracking = ((int)requireBA2Node != 0);
+            cv::FileNode minMonoInitMatchesNode = fSettings["IMU.MinMonoInitMatches"];
+            if(!minMonoInitMatchesNode.empty())
+                mMinMonoInitMatches = std::max(30, (int)minMonoInitMatchesNode);
+            cv::FileNode monoInitMaxTimeNode = fSettings["IMU.MonoInitMaxTime"];
+            if(!monoInitMaxTimeNode.empty())
+                mMonoInitMaxTime = std::max(0.2, (double)monoInitMaxTimeNode);
+            cv::FileNode keepInitRefNode = fSettings["IMU.KeepInitReferenceOnLowMatches"];
+            if(!keepInitRefNode.empty())
+                mKeepInitReferenceOnLowMatches = ((int)keepInitRefNode != 0);
         }
         #endif
     }
@@ -142,6 +152,15 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
             cv::FileNode requireBA2Node = fSettings["IMU.RequireBA2ForTracking"];
             if(!requireBA2Node.empty())
                 mRequireInertialBA2ForTracking = ((int)requireBA2Node != 0);
+            cv::FileNode minMonoInitMatchesNode = fSettings["IMU.MinMonoInitMatches"];
+            if(!minMonoInitMatchesNode.empty())
+                mMinMonoInitMatches = std::max(30, (int)minMonoInitMatchesNode);
+            cv::FileNode monoInitMaxTimeNode = fSettings["IMU.MonoInitMaxTime"];
+            if(!monoInitMaxTimeNode.empty())
+                mMonoInitMaxTime = std::max(0.2, (double)monoInitMaxTimeNode);
+            cv::FileNode keepInitRefNode = fSettings["IMU.KeepInitReferenceOnLowMatches"];
+            if(!keepInitRefNode.empty())
+                mKeepInitReferenceOnLowMatches = ((int)keepInitRefNode != 0);
         }
 
         if(!b_parse_cam || !b_parse_orb || !b_parse_imu)
@@ -3141,11 +3160,12 @@ void Tracking::MonocularInitialization()
     }
     else
     {
-        if (((int)mCurrentFrame.mvKeys.size()<=100)||((mSensor == System::IMU_MONOCULAR)&&(mLastFrame.mTimeStamp-mInitialFrame.mTimeStamp>1.0)))
+        const double monoInitDt = mCurrentFrame.mTimeStamp - mInitialFrame.mTimeStamp;
+        if (((int)mCurrentFrame.mvKeys.size()<=100)||((mSensor == System::IMU_MONOCULAR)&&(monoInitDt>mMonoInitMaxTime)))
         {
             cout << "Monocular init reset: frame=" << mCurrentFrame.mnId
                  << ", features=" << mCurrentFrame.mvKeys.size()
-                 << ", dt=" << (mCurrentFrame.mTimeStamp - mInitialFrame.mTimeStamp)
+                 << ", dt=" << monoInitDt
                  << endl;
             mbReadyToInitializate = false;
 
@@ -3157,13 +3177,16 @@ void Tracking::MonocularInitialization()
         int nmatches = matcher.SearchForInitialization(mInitialFrame,mCurrentFrame,mvbPrevMatched,mvIniMatches,100);
 
         // Check if there are enough correspondences
-        if(nmatches<100)
+        if(nmatches<mMinMonoInitMatches)
         {
             cout << "Monocular init insufficient matches: frame=" << mCurrentFrame.mnId
                  << ", matches=" << nmatches
+                 << ", min_matches=" << mMinMonoInitMatches
                  << ", features=" << mCurrentFrame.mvKeys.size()
+                 << ", dt=" << monoInitDt
                  << endl;
-            mbReadyToInitializate = false;
+            if(!(mSensor == System::IMU_MONOCULAR && mKeepInitReferenceOnLowMatches))
+                mbReadyToInitializate = false;
             return;
         }
 

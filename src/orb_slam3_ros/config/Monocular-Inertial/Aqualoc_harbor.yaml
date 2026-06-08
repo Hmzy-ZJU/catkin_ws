@@ -48,6 +48,9 @@ IMU.RecentlyLostTime: 3.0
 IMU.MinInitTrackedPoints: 30
 IMU.MinTrackLocalMapInliersBeforeInit: 20
 IMU.RequireBA2ForTracking: 1
+IMU.MinMonoInitMatches: 60
+IMU.MonoInitMaxTime: 2.0
+IMU.KeepInitReferenceOnLowMatches: 1
 
 #==================== ORB Extractor ====================
 ORBextractor.nFeatures: 1600
