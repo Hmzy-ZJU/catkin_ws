@@ -2861,6 +2861,8 @@ void Tracking::Track()
         {
             if(pCurrentMap->KeyFramesInMap()<=10)
             {
+                cout << "Tracking lost after timeout, reset active map because it has only "
+                     << pCurrentMap->KeyFramesInMap() << " keyframes" << endl;
                 mpSystem->ResetActiveMap();
                 RecordTrackTime(t_start);
                 return;
@@ -2869,11 +2871,16 @@ void Tracking::Track()
                 if (!pCurrentMap->isImuInitialized())
                 {
                     Verbose::PrintMess("Track lost before IMU initialisation, reseting...", Verbose::VERBOSITY_QUIET);
+                    cout << "Tracking lost after timeout before IMU initialization, reset active map" << endl;
                     mpSystem->ResetActiveMap();
                     RecordTrackTime(t_start);
                     return;
                 }
 
+            cout << "Starting new submap after tracking loss. previous_map_keyframes="
+                 << pCurrentMap->KeyFramesInMap()
+                 << ", imu_initialized=" << pCurrentMap->isImuInitialized()
+                 << ", inertial_ba2=" << pCurrentMap->GetIniertialBA2() << endl;
             CreateMapInAtlas();
             RecordTrackTime(t_start);   
 
