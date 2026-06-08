@@ -258,3 +258,41 @@ target_link_libraries(ros_rgbd_inertial
   uw_fusion
   ${catkin_LIBRARIES}
 )
+
+## Offline direct-reader examples for AIDVO evaluation.
+## They use EuRoC-style folders and avoid ROS playback/callback timing.
+add_executable(aidvo_offline_mono_euroc
+  orb_slam3/Examples/mono_euroc.cc
+)
+target_link_libraries(aidvo_offline_mono_euroc
+  ${PROJECT_NAME}
+  ${OpenCV_LIBS}
+  ${Pangolin_LIBRARIES}
+)
+
+add_executable(aidvo_offline_stereo_euroc
+  orb_slam3/Examples/stereo_euroc.cc
+)
+target_link_libraries(aidvo_offline_stereo_euroc
+  ${PROJECT_NAME}
+  ${OpenCV_LIBS}
+  ${Pangolin_LIBRARIES}
+)
+
+add_executable(aidvo_offline_mono_inertial_euroc
+  orb_slam3/Examples/mono_inertial_euroc.cc
+)
+target_link_libraries(aidvo_offline_mono_inertial_euroc
+  ${PROJECT_NAME}
+  ${OpenCV_LIBS}
+  ${Pangolin_LIBRARIES}
+)
+
+add_executable(aidvo_offline_stereo_inertial_euroc
+  orb_slam3/Examples/stereo_inertial_euroc.cc
+)
+target_link_libraries(aidvo_offline_stereo_inertial_euroc
+  ${PROJECT_NAME}
+  ${OpenCV_LIBS}
+  ${Pangolin_LIBRARIES}
+)
