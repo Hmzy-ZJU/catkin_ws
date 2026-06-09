@@ -41,7 +41,7 @@ Camera.height: 512
 Camera.fps: 20
 Camera.RGB: 0
 
-Camera.bf: 78.4916584
+Camera.bf: 78.89165891925023
 Stereo.b: 0.12044528
 Stereo.ThDepth: 40.0
 ThDepth: 40.0
