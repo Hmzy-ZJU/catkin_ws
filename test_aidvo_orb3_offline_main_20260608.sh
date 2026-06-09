@@ -11,6 +11,7 @@ AIDVO_MODES="${AIDVO_MODES:-off fixed rule}"
 AIDVO_MODES="$(printf '%s' "$AIDVO_MODES" | tr ',' ' ')"
 RUNS_PER_CASE="${RUNS_PER_CASE:-1}"
 RUN_ALL_BAGS="${RUN_ALL_BAGS:-1}"
+ONLY_SEQUENCE="${ONLY_SEQUENCE:-}"
 RUN_PROFILE="${RUN_PROFILE:-full}"
 DO_BUILD="${DO_BUILD:-0}"
 BAG_START="${BAG_START:-0}"
@@ -300,6 +301,7 @@ main() {
   log "RUN_PROFILE=$RUN_PROFILE"
   log "RUN_ALL_BAGS=$RUN_ALL_BAGS"
   log "RUNS_PER_CASE=$RUNS_PER_CASE"
+  log "ONLY_SEQUENCE=$ONLY_SEQUENCE"
   log "BAG_START=$BAG_START"
   log "BAG_DURATION=$BAG_DURATION"
   log "MAX_FRAMES=$MAX_FRAMES"
@@ -313,6 +315,7 @@ main() {
     if [ -n "${ONLY_SENSOR:-}" ] && [ "$sensor" != "$ONLY_SENSOR" ]; then continue; fi
     while read -r bag; do
       [ -z "$bag" ] && continue
+      if [ -n "$ONLY_SEQUENCE" ] && [ "$(basename "$bag" .bag)" != "$ONLY_SEQUENCE" ]; then continue; fi
       for mode in $AIDVO_MODES; do
         for run_id in $(seq 1 "$RUNS_PER_CASE"); do
           run_one "$dataset" "$sensor" "$mode" "$bag" "$run_id"
