@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
+#include <chrono>
 
 namespace ORB_SLAM3
 {
@@ -182,6 +183,7 @@ void AdaptiveLogger::Log(
     bool keyframe_inserted,
     bool tracking_lost)
 {
+    const auto loggerStart = std::chrono::steady_clock::now();
     if(!mEnabled || mPath.empty())
         return;
 
@@ -203,11 +205,21 @@ void AdaptiveLogger::Log(
                     << "tracking_time_ms,recent_local_ba_time_ms,"
                     << "number_of_keyframes,number_of_map_points,keyframe_interval,"
                     << "imu_ready,adaptive_enabled_this_frame,adaptive_bypassed,bypass_reason,policy_type,"
+                    << "fim_time_ms,idps_time_ms,idkd_time_ms,policy_time_ms,logger_time_ms,total_adaptive_time_ms,"
                     << "kappa_top,alpha,tau0,theta_drop,keyframe_aggressiveness,"
                     << "keyframe_insertion_flag,tracking_lost_flag,ate,rpe\n";
         }
         mHeaderWritten = true;
     }
+
+    const double loggerTimeMs = std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
+        std::chrono::steady_clock::now() - loggerStart).count();
+    const double totalAdaptiveTimeMs =
+        state.fim_time_ms +
+        state.idps_time_ms +
+        state.idkd_time_ms +
+        state.policy_time_ms +
+        loggerTimeMs;
 
     mStream << std::fixed << std::setprecision(6)
             << state.frame_id << ","
@@ -236,6 +248,12 @@ void AdaptiveLogger::Log(
             << (state.adaptive_bypassed ? 1 : 0) << ","
             << state.bypass_reason << ","
             << AdaptivePolicyTypeName(state.policy_type) << ","
+            << state.fim_time_ms << ","
+            << state.idps_time_ms << ","
+            << state.idkd_time_ms << ","
+            << state.policy_time_ms << ","
+            << loggerTimeMs << ","
+            << totalAdaptiveTimeMs << ","
             << params.kappa_top << ","
             << params.alpha << ","
             << params.tau0 << ","

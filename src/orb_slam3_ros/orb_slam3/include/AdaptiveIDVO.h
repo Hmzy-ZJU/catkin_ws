@@ -52,6 +52,13 @@ struct AdaptiveState
     bool adaptive_bypassed = false;
     std::string bypass_reason;
     AdaptivePolicyType policy_type = AdaptivePolicyType::Fixed;
+
+    double fim_time_ms = 0.0;
+    double idps_time_ms = 0.0;
+    double idkd_time_ms = 0.0;
+    double policy_time_ms = 0.0;
+    double logger_time_ms = 0.0;
+    double total_adaptive_time_ms = 0.0;
 };
 
 struct AdaptiveParams

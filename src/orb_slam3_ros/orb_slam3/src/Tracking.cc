@@ -453,6 +453,7 @@ void Tracking::LogAdaptiveFrame(double track_ms)
     mAdaptiveLastState.number_of_map_points = mpAtlas ? static_cast<int>(mpAtlas->MapPointsInMap()) : 0;
     mAdaptiveLastState.keyframe_interval = static_cast<int>(mCurrentFrame.mnId - mnLastKeyFrameId);
     AnnotateAdaptiveState(mAdaptiveLastState);
+    ApplyAdaptiveTimingToState(mAdaptiveLastState);
 
     const bool trackingLost = (mState == LOST || mState == RECENTLY_LOST);
     mAdaptiveLogger.Log(mAdaptiveLastState, mAdaptiveCurrentParams, mAdaptiveKeyFrameInserted, trackingLost);
@@ -2192,6 +2193,10 @@ void Tracking::Track()
     mAdaptiveGateResult = false;
     mAdaptiveBypassedThisFrame = false;
     mAdaptiveBypassReason.clear();
+    mAdaptiveFimTimeMs = 0.0;
+    mAdaptiveIdpsTimeMs = 0.0;
+    mAdaptiveIdkdTimeMs = 0.0;
+    mAdaptivePolicyTimeMs = 0.0;
 #endif
 
     if(mpLocalMapper->mbBadImu)
@@ -2838,6 +2843,10 @@ void Tracking::Track()
                 logTrackStageException("NeedNewKeyFrame", e);
                 throw;
             }
+#ifdef ORB3_USE_INFOSEL
+            if(bNeedKF)
+                mAdaptiveKeyFrameInserted = true;
+#endif
 
             // Check if we need to insert a new keyframe
             // if(bNeedKF && bOK)
@@ -2858,7 +2867,7 @@ void Tracking::Track()
                 }
 #ifdef ORB3_USE_INFOSEL
                 const long unsigned int kfsAfterAdaptive = mpAtlas ? mpAtlas->KeyFramesInMap() : kfsBeforeAdaptive;
-                mAdaptiveKeyFrameInserted = (kfsAfterAdaptive > kfsBeforeAdaptive);
+                mAdaptiveKeyFrameInserted = mAdaptiveKeyFrameInserted || (kfsAfterAdaptive > kfsBeforeAdaptive);
 #endif
             }
 
@@ -3793,6 +3802,7 @@ bool Tracking::TrackLocalMap()
                 const int nMPsAdaptive = mpAtlas ? static_cast<int>(mpAtlas->MapPointsInMap()) : 0;
                 const int kfIntervalAdaptive = static_cast<int>(mCurrentFrame.mnId - mnLastKeyFrameId);
 
+                const auto fimStart = std::chrono::steady_clock::now();
                 AdaptiveState preState = ORBAdaptiveStateCollector::Collect(
                     mCurrentFrame,
                     mImGray,
@@ -3809,11 +3819,15 @@ bool Tracking::TrackLocalMap()
                     nKFsAdaptive,
                     nMPsAdaptive,
                     kfIntervalAdaptive);
+                mAdaptiveFimTimeMs += std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
+                    std::chrono::steady_clock::now() - fimStart).count();
                 AnnotateAdaptiveState(preState);
+                ApplyAdaptiveTimingToState(preState);
                 UpdateAdaptiveParamsFromState(preState);
                 frameInfoSelParams = GetCurrentInfoSelectParams();
             }
 
+            const auto idpsStart = std::chrono::steady_clock::now();
             // 选择（InfoGain）
             std::vector<int> selected =
                 InfoGain::SelectByInformationGain(mCurrentFrame, cand, frameInfoSelParams);
@@ -3860,6 +3874,8 @@ bool Tracking::TrackLocalMap()
                 if (mCurrentFrame.mvpMapPoints[i] && keepIdx.find(i) == keepIdx.end())
                     mCurrentFrame.mvpMapPoints[i] = nullptr;
             }
+            mAdaptiveIdpsTimeMs += std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
+                std::chrono::steady_clock::now() - idpsStart).count();
 
             std::cout << "[InfoSel] (UNIFIED) Frame " << mCurrentFrame.mnId
                       << " candidates(before): " << nBefore
@@ -3874,6 +3890,7 @@ bool Tracking::TrackLocalMap()
                 mAdaptiveLastState.selection_ratio =
                     static_cast<double>(selected.size()) / static_cast<double>(std::max(1, nBefore));
                 AnnotateAdaptiveState(mAdaptiveLastState);
+                ApplyAdaptiveTimingToState(mAdaptiveLastState);
                 mAdaptiveStateValid = true;
             }
         }
@@ -3890,6 +3907,7 @@ bool Tracking::TrackLocalMap()
                 mAdaptiveLastState.selected_point_number = 0;
                 mAdaptiveLastState.selection_ratio = 0.0;
                 AnnotateAdaptiveState(mAdaptiveLastState);
+                ApplyAdaptiveTimingToState(mAdaptiveLastState);
                 mAdaptiveStateValid = true;
             }
         }
@@ -4217,6 +4235,7 @@ bool Tracking::NeedNewKeyFrame()
         // If the mapping accepts keyframes, insert keyframe.
         // Otherwise send a signal to interrupt BA
         #ifdef ORB3_USE_INFOSEL
+        const auto idkdStart = std::chrono::steady_clock::now();
         // === 信息门控：若启用，在批准新KF之前计算当前帧 Fisher 信息 ===
         if(IsAdaptiveExecutionEnabled() &&
            mAdaptiveConfig.enable_adaptive_idvo &&
@@ -4247,8 +4266,11 @@ bool Tracking::NeedNewKeyFrame()
                     if(mCurrentFrame.mvpMapPoints[i] && !mCurrentFrame.mvpMapPoints[i]->isBad())
                         ++n_matches_curr;
 
+                const auto fimStart = std::chrono::steady_clock::now();
                 Eigen::Matrix<double,6,6> H_curr =
                     InfoGain::ComputePoseInformation(mCurrentFrame, validIndices, frameInfoKFParams.lambdaMean);
+                mAdaptiveFimTimeMs += std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
+                    std::chrono::steady_clock::now() - fimStart).count();
 
                 // 帧距自增（建议放在 NeedNewKeyFrame 一开始的地方，每帧+1）
                 mInfoKFState.framesSinceRef++;
@@ -4256,10 +4278,14 @@ bool Tracking::NeedNewKeyFrame()
                 bool infoAllow = InfoKFPolicy::AllowNewKF(H_curr, n_matches_curr, mInfoKFState, frameInfoKFParams);
                 if(!infoAllow) {
                     std::cout << "[Tracking] KF rejected by info gating" << std::endl;
+                    mAdaptiveIdkdTimeMs += std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
+                        std::chrono::steady_clock::now() - idkdStart).count();
                     return false;
                 }
             }
         }
+        mAdaptiveIdkdTimeMs += std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
+            std::chrono::steady_clock::now() - idkdStart).count();
         #endif
 
         if(bLocalMappingIdle || mpLocalMapper->IsInitializing())
@@ -4305,6 +4331,7 @@ void Tracking::CreateNewKeyFrame()
 
     KeyFrame* pKF = new KeyFrame(mCurrentFrame,mpAtlas->GetCurrentMap(),mpKeyFrameDB);
     #ifdef ORB3_USE_INFOSEL
+    const auto idkdStart = std::chrono::steady_clock::now();
     // Visual modes are ready immediately; inertial modes wait for IMU bootstrap.
     InfoKFParams frameInfoKFParams = GetCurrentInfoKFParams();
     if(frameInfoKFParams.use && mCurrentFrame.HasPose() &&
@@ -4323,12 +4350,17 @@ void Tracking::CreateNewKeyFrame()
         {
             // 将当前关键帧的匹配数记作 reference，用于后续 r = n_matches_curr / refMatches
             mInfoKFState.refMatches = mnMatchesInliers;
+            const auto fimStart = std::chrono::steady_clock::now();
             Eigen::Matrix<double,6,6> H_new =
                 InfoGain::ComputePoseInformation(mCurrentFrame, validIndices, frameInfoKFParams.lambdaMean);
+            mAdaptiveFimTimeMs += std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
+                std::chrono::steady_clock::now() - fimStart).count();
 
             InfoKFPolicy::OnKeyFrameCreated(H_new, mInfoKFState, frameInfoKFParams);
         }
     }
+    mAdaptiveIdkdTimeMs += std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
+        std::chrono::steady_clock::now() - idkdStart).count();
     #endif
 
     if(mpAtlas->isImuInitialized()) //  || mpLocalMapper->IsInitializing())
@@ -4775,16 +4807,33 @@ void Tracking::AnnotateAdaptiveState(AdaptiveState& state) const
     state.policy_type = mAdaptiveConfig.policy_type;
 }
 
+void Tracking::ApplyAdaptiveTimingToState(AdaptiveState& state) const
+{
+    state.fim_time_ms = mAdaptiveFimTimeMs;
+    state.idps_time_ms = mAdaptiveIdpsTimeMs;
+    state.idkd_time_ms = mAdaptiveIdkdTimeMs;
+    state.policy_time_ms = mAdaptivePolicyTimeMs;
+    state.logger_time_ms = 0.0;
+    state.total_adaptive_time_ms =
+        state.fim_time_ms +
+        state.idps_time_ms +
+        state.idkd_time_ms +
+        state.policy_time_ms;
+}
+
 void Tracking::UpdateAdaptiveParamsFromState(const AdaptiveState& state)
 {
     mAdaptiveLastState = state;
     mAdaptiveStateValid = true;
 
+    const auto policyStart = std::chrono::steady_clock::now();
     if(!mAdaptiveConfig.enable_adaptive_idvo ||
        !IsAdaptiveExecutionEnabled() ||
        mAdaptiveConfig.policy_type == AdaptivePolicyType::Fixed)
     {
         mAdaptiveCurrentParams = mAdaptiveFixedParams;
+        mAdaptivePolicyTimeMs += std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
+            std::chrono::steady_clock::now() - policyStart).count();
         return;
     }
 
@@ -4804,6 +4853,8 @@ void Tracking::UpdateAdaptiveParamsFromState(const AdaptiveState& state)
             mAdaptiveFixedParams,
             mAdaptiveConfig);
     }
+    mAdaptivePolicyTimeMs += std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
+        std::chrono::steady_clock::now() - policyStart).count();
 }
 
 void Tracking::EnsureAdaptiveStateForLogging(double track_ms)
@@ -4823,6 +4874,7 @@ void Tracking::EnsureAdaptiveStateForLogging(double track_ms)
         mAdaptiveLastState.number_of_map_points = mpAtlas ? static_cast<int>(mpAtlas->MapPointsInMap()) : 0;
         mAdaptiveLastState.keyframe_interval = static_cast<int>(mCurrentFrame.mnId - mnLastKeyFrameId);
         AnnotateAdaptiveState(mAdaptiveLastState);
+        ApplyAdaptiveTimingToState(mAdaptiveLastState);
         mAdaptiveStateValid = true;
         return;
     }
@@ -4870,6 +4922,7 @@ void Tracking::EnsureAdaptiveStateForLogging(double track_ms)
     const int nMPsAdaptive = mpAtlas ? static_cast<int>(mpAtlas->MapPointsInMap()) : 0;
     const int kfIntervalAdaptive = static_cast<int>(mCurrentFrame.mnId - mnLastKeyFrameId);
 
+    const auto fimStart = std::chrono::steady_clock::now();
     AdaptiveState state = ORBAdaptiveStateCollector::Collect(
         mCurrentFrame,
         mImGray,
@@ -4886,8 +4939,11 @@ void Tracking::EnsureAdaptiveStateForLogging(double track_ms)
         nKFsAdaptive,
         nMPsAdaptive,
         kfIntervalAdaptive);
+    mAdaptiveFimTimeMs += std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
+        std::chrono::steady_clock::now() - fimStart).count();
 
     AnnotateAdaptiveState(state);
+    ApplyAdaptiveTimingToState(state);
     UpdateAdaptiveParamsFromState(state);
 }
 

@@ -439,6 +439,10 @@ protected:
     mutable std::string mAdaptiveBypassReason;
     mutable long unsigned int mAdaptiveGateFrameId = std::numeric_limits<long unsigned int>::max();
     mutable bool mAdaptiveGateResult = false;
+    double mAdaptiveFimTimeMs = 0.0;
+    double mAdaptiveIdpsTimeMs = 0.0;
+    double mAdaptiveIdkdTimeMs = 0.0;
+    double mAdaptivePolicyTimeMs = 0.0;
 
     void LoadInfoParams(cv::FileStorage& fSettings);
     void LoadAdaptiveParams(cv::FileStorage& fSettings);
@@ -446,6 +450,7 @@ protected:
     bool IsInfoModuleRuntimeReady() const;
     bool IsAdaptiveExecutionEnabled() const;
     void AnnotateAdaptiveState(AdaptiveState& state) const;
+    void ApplyAdaptiveTimingToState(AdaptiveState& state) const;
     void UpdateAdaptiveParamsFromState(const AdaptiveState& state);
     void EnsureAdaptiveStateForLogging(double track_ms);
     InfoSelectParams GetCurrentInfoSelectParams() const;
