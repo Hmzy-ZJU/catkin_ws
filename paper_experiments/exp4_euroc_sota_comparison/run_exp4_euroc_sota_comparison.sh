@@ -101,12 +101,30 @@ EOF
 
 find_gt() {
   local seq="$1"
+  local seq_compact root p found
+  seq_compact="$(printf '%s' "$seq" | tr -d '_')"
+  for root in \
+    "${EUROC_GT_ROOT:-}" \
+    "$EUROC_ROOT/GT" \
+    "$EUROC_ROOT/groundtruth" \
+    "$EUROC_ROOT"; do
+    [ -n "$root" ] && [ -d "$root" ] || continue
+    for p in \
+      "$root/${seq}.csv" \
+      "$root/${seq}.tum" \
+      "$root/${seq}.txt" \
+      "$root/${seq_compact}.csv" \
+      "$root/${seq_compact}.tum" \
+      "$root/${seq_compact}.txt"; do
+      if [ -s "$p" ]; then printf '%s\n' "$p"; return 0; fi
+    done
+    found="$(find "$root" -maxdepth 3 -type f \( -iname "${seq}.csv" -o -iname "${seq}.tum" -o -iname "${seq}.txt" -o -iname "${seq_compact}.csv" -o -iname "${seq_compact}.tum" -o -iname "${seq_compact}.txt" \) -print -quit 2>/dev/null || true)"
+    if [ -n "$found" ] && [ -s "$found" ]; then printf '%s\n' "$found"; return 0; fi
+  done
   for p in \
-    "$EUROC_ROOT/GT/${seq}.csv" \
-    "$EUROC_ROOT/GT/${seq}.tum" \
-    "$EUROC_ROOT/GT/${seq}.txt" \
-    "$EUROC_ROOT/groundtruth/${seq}.tum" \
-    "$EUROC_ROOT/groundtruth/${seq}.txt"; do
+    "$EUROC_ROOT/data/${seq}.csv" \
+    "$EUROC_ROOT/data/${seq}.tum" \
+    "$EUROC_ROOT/data/${seq}.txt"; do
     if [ -s "$p" ]; then printf '%s\n' "$p"; return 0; fi
   done
   return 1
@@ -383,6 +401,7 @@ main() {
   log "Exp.4 EuRoC SOTA comparison started"
   log "WS=$WS"
   log "EUROC_ROOT=$EUROC_ROOT"
+  log "EUROC_GT_ROOT=${EUROC_GT_ROOT:-}"
   log "RUN_TAG=$RUN_TAG"
   log "SEQUENCES=$SEQUENCES"
   log "SENSOR=$SENSOR"
