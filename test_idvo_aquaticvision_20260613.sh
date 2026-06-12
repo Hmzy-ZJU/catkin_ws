@@ -143,7 +143,10 @@ def read_tum(path):
             parts = line.split()
             if len(parts) < 8:
                 continue
-            rows.append((float(parts[0]), parts))
+            stamp = float(parts[0])
+            if abs(stamp) > 1e12:
+                stamp /= 1e9
+            rows.append((stamp, parts))
     return rows
 
 gt = read_tum(gt_in)
