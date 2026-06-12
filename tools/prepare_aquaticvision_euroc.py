@@ -225,6 +225,9 @@ def find_imu_bag(seq_dir):
     bag_dir = seq_dir / "data rosbag"
     candidates = []
     if bag_dir.is_dir():
+        # The extracted Stereo images are the 30 Hz frame set, so prefer the
+        # matching 1000 Hz IMU / 30 Hz image rosbag for inertial runs.
+        candidates.extend(sorted(bag_dir.glob("*1000hz_images_30hz.bag")))
         candidates.extend(sorted(bag_dir.glob("*200hz_images_20hz.bag")))
         candidates.extend(sorted(bag_dir.glob("*.bag")))
     return candidates[0] if candidates else None
@@ -265,6 +268,32 @@ def extract_imu_csv(seq_dir, out, imu_topic):
         f.write("#timestamp [ns],w_RS_S_x [rad s^-1],w_RS_S_y [rad s^-1],w_RS_S_z [rad s^-1],a_RS_S_x [m s^-2],a_RS_S_y [m s^-2],a_RS_S_z [m s^-2]\n")
         csv.writer(f).writerows(rows)
     return imu_path, str(bag)
+
+
+def estimate_imu_frequency(imu_path):
+    ts = []
+    with open(imu_path, errors="ignore") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                v = float(line.split(",")[0])
+            except Exception:
+                continue
+            if abs(v) > 1e12:
+                v /= 1e9
+            ts.append(v)
+            if len(ts) >= 200:
+                break
+    if len(ts) < 3:
+        return None
+    dts = [b - a for a, b in zip(ts, ts[1:]) if b > a]
+    if not dts:
+        return None
+    dts.sort()
+    med = dts[len(dts) // 2]
+    return 1.0 / med if med > 0 else None
 
 
 def token_to_ns(token):
@@ -517,6 +546,9 @@ def main():
         if imu is None:
             raise RuntimeError("cannot find davis_imucam_underwater.yaml for inertial config")
         imu_path, imu_source = extract_imu_csv(seq_dir, out, imu["imu_topic"])
+        freq = estimate_imu_frequency(imu_path)
+        if freq:
+            imu["frequency"] = freq
 
     if args.mono_config:
         write_config(args.mono_config, cam, baseline, False, args.fps, args.topk)
