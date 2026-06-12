@@ -125,17 +125,82 @@ run_evo() {
     return 0
   fi
 
+  local gt_eval="$evo_dir/groundtruth_matched.tum"
+  local traj_eval="$evo_dir/estimated_matched.tum"
+  python3 - "$gt" "$traj" "$gt_eval" "$traj_eval" <<'PY' > "$evo_dir/match_timestamps_stdout.txt" 2>&1
+import bisect
+import sys
+
+gt_in, est_in, gt_out, est_out = sys.argv[1:5]
+
+def read_tum(path):
+    rows = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            if len(parts) < 8:
+                continue
+            rows.append((float(parts[0]), parts))
+    return rows
+
+gt = read_tum(gt_in)
+est = read_tum(est_in)
+if len(gt) < 3 or len(est) < 3:
+    raise SystemExit("not enough poses for evo matching")
+
+gt_times = [r[0] for r in gt]
+offset = gt_times[0] - est[0][0]
+max_dt = max(0.05, 2.5 * (gt_times[min(20, len(gt_times)-1)] - gt_times[0]) / max(1, min(20, len(gt_times)-1)))
+matches = []
+for est_t, est_parts in est:
+    target = est_t + offset
+    j = bisect.bisect_left(gt_times, target)
+    cand = []
+    if j < len(gt): cand.append(j)
+    if j > 0: cand.append(j - 1)
+    if not cand:
+        continue
+    best = min(cand, key=lambda i: abs(gt_times[i] - target))
+    dt = abs(gt_times[best] - target)
+    if dt <= max_dt:
+        matches.append((est_t, gt[best][1], est_parts, dt))
+
+if len(matches) < 3:
+    raise SystemExit(f"not enough matched poses: {len(matches)}, offset={offset}, max_dt={max_dt}")
+
+with open(gt_out, "w") as fg, open(est_out, "w") as fe:
+    for stamp, gt_parts, est_parts, _ in matches:
+        # Use the estimated trajectory timestamp for both files so evo sees
+        # exact synchronized pairs after nearest-neighbor association.
+        fg.write(" ".join([f"{stamp:.9f}"] + gt_parts[1:8]) + "\n")
+        fe.write(" ".join([f"{stamp:.9f}"] + est_parts[1:8]) + "\n")
+
+mean_dt = sum(m[3] for m in matches) / len(matches)
+print(f"matches={len(matches)}")
+print(f"offset={offset:.9f}")
+print(f"max_dt={max_dt:.9f}")
+print(f"mean_dt={mean_dt:.9f}")
+PY
+
+  if [ ! -s "$gt_eval" ] || [ ! -s "$traj_eval" ]; then
+    echo "EVO_SKIP failed to create matched TUM files" > "$evo_dir/evo_status.txt"
+    return 0
+  fi
+
   export MPLBACKEND=Agg
   echo "EVO_RUNNING" > "$evo_dir/evo_status.txt"
-  timeout --preserve-status "$EVO_TIMEOUT" evo_ape tum "$gt" "$traj" -a --align $scale_arg -s -v \
+  timeout --preserve-status "$EVO_TIMEOUT" evo_ape tum "$gt_eval" "$traj_eval" -a --align $scale_arg -s -v \
     --save_results "$evo_dir/evo_ape.zip" \
     --save_plot "$evo_dir/evo_ape_plot_xy.pdf" \
     --plot_mode xy --no_warnings > "$evo_dir/evo_ape.txt" 2>&1 || echo "evo_ape failed or timed out" >> "$evo_dir/evo_status.txt"
-  timeout --preserve-status "$EVO_TIMEOUT" evo_rpe tum "$gt" "$traj" -a --align $scale_arg -s -v -r trans_part -d 1 -u f \
+  timeout --preserve-status "$EVO_TIMEOUT" evo_rpe tum "$gt_eval" "$traj_eval" -a --align $scale_arg -s -v -r trans_part -d 1 -u f \
     --save_results "$evo_dir/evo_rpe.zip" \
     --save_plot "$evo_dir/evo_rpe_plot_xy.pdf" \
     --plot_mode xy --no_warnings > "$evo_dir/evo_rpe.txt" 2>&1 || echo "evo_rpe failed or timed out" >> "$evo_dir/evo_status.txt"
-  timeout --preserve-status "$EVO_TIMEOUT" evo_traj tum "$traj" --ref "$gt" --align $scale_arg \
+  timeout --preserve-status "$EVO_TIMEOUT" evo_traj tum "$traj_eval" --ref "$gt_eval" --align $scale_arg \
     --save_plot "$evo_dir/evo_traj_plot_xy.pdf" \
     --plot_mode xy --no_warnings > "$evo_dir/evo_traj.txt" 2>&1 || echo "evo_traj failed or timed out" >> "$evo_dir/evo_status.txt"
   echo "EVO_DONE" >> "$evo_dir/evo_status.txt"
