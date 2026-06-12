@@ -109,8 +109,22 @@ int main(int argc, char **argv)
 
         // Find first imu to be considered, supposing imu measurements start first
 
-        while(vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][0])
+        while(first_imu[seq] < nImu[seq] && vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][0])
             first_imu[seq]++;
+        if(first_imu[seq] == 0)
+        {
+            cerr << "ERROR: No IMU measurement before first image for sequence " << seq
+                 << ". first_cam=" << fixed << vTimestampsCam[seq][0]
+                 << " first_imu=" << vTimestampsImu[seq][0] << endl;
+            return 1;
+        }
+        if(first_imu[seq] >= nImu[seq])
+        {
+            cerr << "ERROR: IMU measurements end before first image for sequence " << seq
+                 << ". first_cam=" << fixed << vTimestampsCam[seq][0]
+                 << " last_imu=" << vTimestampsImu[seq].back() << endl;
+            return 1;
+        }
         first_imu[seq]--; // first imu measurement to be considered
     }
 
@@ -170,7 +184,7 @@ int main(int argc, char **argv)
             vImuMeas.clear();
 
             if(ni>0)
-                while(vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][ni]) // while(vTimestampsImu[first_imu]<=vTimestampsCam[ni])
+                while(first_imu[seq] < nImu[seq] && vTimestampsImu[seq][first_imu[seq]]<=vTimestampsCam[seq][ni]) // while(vTimestampsImu[first_imu]<=vTimestampsCam[ni])
                 {
                     vImuMeas.push_back(ORB_SLAM3::IMU::Point(vAcc[seq][first_imu[seq]].x,vAcc[seq][first_imu[seq]].y,vAcc[seq][first_imu[seq]].z,
                                                              vGyro[seq][first_imu[seq]].x,vGyro[seq][first_imu[seq]].y,vGyro[seq][first_imu[seq]].z,
@@ -281,6 +295,8 @@ void LoadIMU(const string &strImuPath, vector<double> &vTimeStamps, vector<cv::P
     {
         string s;
         getline(fImu,s);
+        if(s.empty())
+            continue;
         if (s[0] == '#')
             continue;
 
@@ -295,6 +311,8 @@ void LoadIMU(const string &strImuPath, vector<double> &vTimeStamps, vector<cv::P
                 data[count++] = stod(item);
                 s.erase(0, pos + 1);
             }
+            if(count != 6)
+                continue;
             item = s.substr(0, pos);
             data[6] = stod(item);
 
