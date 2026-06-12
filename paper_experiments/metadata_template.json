@@ -1,0 +1,16 @@
+{
+  "experiment_id": "expX",
+  "dataset": "DatasetName",
+  "sequence": "SequenceName",
+  "sensor": "mono",
+  "method": "IDVO",
+  "run_id": 1,
+  "git_commit": "unknown",
+  "script": "unknown",
+  "run_mode": "ROS online or offline direct reading",
+  "date": "YYYY-MM-DD",
+  "config_file": "settings.yaml",
+  "trajectory_file": "trajectory.txt",
+  "evo_dir": "evo",
+  "notes": ""
+}

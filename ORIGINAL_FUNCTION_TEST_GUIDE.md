@@ -1,8 +1,8 @@
 # 原始项目功能回归测试文档
 
-本文档用于重新熟悉当前 `catkin_ws-main` ROS 工作空间，并在测试 UW-AIDVO 新改动前，先确认原有 ORB-SLAM3-ROS、UW-Fusion、UW-IDVO 固定参数功能是否正常。
+本文档用于重新熟悉当前 `catkin_ws-main` ROS 工作空间，并在运行 UW-IDVO 四模式实验前，先确认原有 ORB-SLAM3-ROS、UW-Fusion、UW-IDVO 固定参数功能是否正常。
 
-注意：当前代码已经加入 UW-AIDVO 框架。为了回归测试“原来的固定参数版功能”，配置中必须保持：
+注意：当前论文主线已经收敛为 `UW-IDVO = IDPS + IDKD`。为了回归测试固定参数版功能，配置中必须保持：
 
 ```yaml
 EnableAdaptiveIDVO: 0
@@ -586,7 +586,7 @@ python3 plot_traj_ate.py --help
 5. Aqualoc harbor mono 跑通，确认 UW-Fusion、InfoSelector、InfoKF 日志。
 6. 对照测试 `aqualoc_harbor_mono.launch` 与 `aqualoc_harbor_mono_off.launch`。
 7. 临时开关 `InfoSelector.Enable` 和 `InfoKF.Use` 做原始模块消融。
-8. 所有原功能确认后，再进入 UW-AIDVO 新代码测试。
+8. 所有原功能确认后，再进入 UW-IDVO 四模式测试。
 
 ## 18. 测试记录模板
 

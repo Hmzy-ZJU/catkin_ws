@@ -413,7 +413,8 @@ def write_config(path, cam, baseline, stereo, fps, topk):
     bf = cam["fx"] * baseline if stereo else None
     with open(path, "w", newline="\n") as f:
         f.write("%YAML:1.0\n")
-        f.write("\n# Generated for AquaticVision IDVO/off testing\n")
+        f.write("\n# Generated for AquaticVision UW-IDVO testing\n")
+        f.write('UWIDVO.Mode: "IDVO"\n')
         f.write('Camera.type: "PinHole"\n')
         for k in ("fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2"):
             f.write(f"Camera.{k}: {cam[k]}\n")
@@ -447,7 +448,8 @@ def write_inertial_config(path, cam0, cam1, imu, stereo, fps, topk, baseline=0.0
     fps_value = int(round(fps))
     with open(path, "w", newline="\n") as f:
         f.write("%YAML:1.0\n")
-        f.write("\n# Generated for AquaticVision IDVO/off inertial testing\n")
+        f.write("\n# Generated for AquaticVision UW-IDVO inertial testing\n")
+        f.write('UWIDVO.Mode: "IDVO"\n')
         f.write('File.version: "1.0"\n')
         # AquaticVision stereo images are already provided as an image-pair
         # product. The full PinHole stereo-inertial path in ORB-SLAM3
