@@ -3,14 +3,14 @@ set -u
 
 # AquaticVision IDVO/off test.
 # This script uses ORB-SLAM3 offline EuRoC readers, not ROS playback.
-# It prepares AquaticVision l1/r1 image folders into a EuRoC-like cache,
-# runs mono/stereo with EnableAdaptiveIDVO=0, and saves evo evaluation plots.
+# It prepares AquaticVision l1/r1 image folders and optional IMU data into a
+# EuRoC-like cache, runs IDVO/off, and saves evo evaluation plots.
 
 WS="${WS:-$HOME/catkin_ws}"
 AQUATIC_ROOT="${AQUATIC_ROOT:-$WS/dataset_AquaticVision}"
 RUN_TAG="${RUN_TAG:-idvo_aquaticvision_$(date +%Y%m%d_%H%M%S)}"
 SEQUENCES="${SEQUENCES:-01 02 03 04 05 06 07 08 09}"
-SENSORS="${SENSORS:-mono stereo}"
+SENSORS="${SENSORS:-mono stereo mono-inertial stereo-inertial}"
 RUNS_PER_CASE="${RUNS_PER_CASE:-1}"
 DO_BUILD="${DO_BUILD:-0}"
 MAX_FRAMES="${MAX_FRAMES:-0}"
@@ -70,6 +70,8 @@ offline_exe() {
   case "$1" in
     mono) printf '%s\n' aidvo_offline_mono_euroc ;;
     stereo) printf '%s\n' aidvo_offline_stereo_euroc ;;
+    mono-inertial) printf '%s\n' aidvo_offline_mono_inertial_euroc ;;
+    stereo-inertial) printf '%s\n' aidvo_offline_stereo_inertial_euroc ;;
     *) return 1 ;;
   esac
 }
@@ -87,11 +89,15 @@ extract_metric() {
 }
 
 prepare_sequence() {
-  local seq="$1" cache="$2" mono_cfg="$3" stereo_cfg="$4"
+  local seq="$1" sensor="$2" cache="$3" mono_cfg="$4" stereo_cfg="$5" mono_inertial_cfg="$6" stereo_inertial_cfg="$7"
   local copy_arg=""
   local baseline_arg=""
+  local imu_arg=""
   if [ "$COPY_IMAGES" = "1" ]; then copy_arg="--copy-images"; fi
   if [ -n "${AQUATIC_BASELINE:-}" ]; then baseline_arg="--baseline $AQUATIC_BASELINE"; fi
+  case "$sensor" in
+    mono-inertial|stereo-inertial) imu_arg="--with-imu" ;;
+  esac
 
   python3 "$PREPARE_TOOL" \
     --root "$AQUATIC_ROOT" \
@@ -99,10 +105,13 @@ prepare_sequence() {
     --out "$cache" \
     --mono-config "$mono_cfg" \
     --stereo-config "$stereo_cfg" \
+    --mono-inertial-config "$mono_inertial_cfg" \
+    --stereo-inertial-config "$stereo_inertial_cfg" \
     --fps "$FPS" \
     --max-frames "$MAX_FRAMES" \
     --topk "$TOPK" \
     $baseline_arg \
+    $imu_arg \
     $copy_arg
 }
 
@@ -211,16 +220,18 @@ PY
 
 run_one() {
   local seq="$1" sensor="$2" run_id="$3"
-  local seq_tag cache result_dir mono_cfg stereo_cfg cfg exe_name exe tag traj gt start_time end_time elapsed exit_code
+  local seq_tag cache result_dir mono_cfg stereo_cfg mono_inertial_cfg stereo_inertial_cfg cfg exe_name exe tag traj gt start_time end_time elapsed exit_code
   seq_tag="$(printf '%s' "$seq" | tr ' /' '__')"
   cache="$CACHE_ROOT/$seq_tag"
   result_dir="$RESULT_ROOT/idvo_off/$sensor/$seq_tag/run_${run_id}"
   mono_cfg="$result_dir/aquaticvision_mono_idvo_off.yaml"
   stereo_cfg="$result_dir/aquaticvision_stereo_idvo_off.yaml"
+  mono_inertial_cfg="$result_dir/aquaticvision_mono_inertial_idvo_off.yaml"
+  stereo_inertial_cfg="$result_dir/aquaticvision_stereo_inertial_idvo_off.yaml"
   mkdir -p "$result_dir"
 
   log "[PREPARE] sequence=$seq sensor=$sensor cache=$cache"
-  if ! prepare_sequence "$seq" "$cache" "$mono_cfg" "$stereo_cfg" > "$result_dir/prepare_stdout.txt" 2>&1; then
+  if ! prepare_sequence "$seq" "$sensor" "$cache" "$mono_cfg" "$stereo_cfg" "$mono_inertial_cfg" "$stereo_inertial_cfg" > "$result_dir/prepare_stdout.txt" 2>&1; then
     log "[ERROR] prepare failed sequence=$seq sensor=$sensor"
     write_row "aquaticvision" "$seq" "$sensor" "idvo_off" "$run_id" "PREPARE_FAIL" "0" "0" "0" "0" "0.000" "$result_dir" "" "" "" "" "" "" "prepare_failed"
     return 0
@@ -229,6 +240,8 @@ run_one() {
   case "$sensor" in
     mono) cfg="$mono_cfg" ;;
     stereo) cfg="$stereo_cfg" ;;
+    mono-inertial) cfg="$mono_inertial_cfg" ;;
+    stereo-inertial) cfg="$stereo_inertial_cfg" ;;
     *) write_row "aquaticvision" "$seq" "$sensor" "idvo_off" "$run_id" "UNSUPPORTED" "0" "0" "0" "0" "0.000" "$result_dir" "" "" "" "" "" "" "unsupported_sensor"; return 0 ;;
   esac
 
