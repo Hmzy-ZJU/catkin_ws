@@ -130,6 +130,49 @@ find_gt() {
   return 1
 }
 
+find_gt_debug() {
+  local seq="$1" out="$2"
+  python3 - "$seq" "${EUROC_GT_ROOT:-}" "$EUROC_ROOT" "$out" <<'PY'
+from pathlib import Path
+import sys
+
+seq, gt_root, euroc_root, out_path = sys.argv[1:5]
+seq_compact = seq.replace("_", "")
+roots = []
+for value in [gt_root, str(Path(euroc_root) / "GT"), str(Path(euroc_root) / "groundtruth"), euroc_root, str(Path(euroc_root) / "data")]:
+    if value and value not in roots:
+        roots.append(value)
+
+names = []
+for stem in [seq, seq_compact]:
+    for ext in [".csv", ".tum", ".txt"]:
+        names.append(stem + ext)
+
+lines = []
+for root_value in roots:
+    root = Path(root_value).expanduser()
+    lines.append(f"root={root} exists={root.is_dir()}")
+    if not root.is_dir():
+        continue
+    for name in names:
+        candidate = root / name
+        lines.append(f"candidate={candidate} exists={candidate.is_file()} size={candidate.stat().st_size if candidate.is_file() else 0}")
+        if candidate.is_file() and candidate.stat().st_size > 0:
+            Path(out_path).write_text("\n".join(lines) + f"\nFOUND={candidate}\n")
+            print(candidate)
+            raise SystemExit(0)
+    for candidate in root.rglob("*"):
+        if candidate.is_file() and candidate.name in names and candidate.stat().st_size > 0:
+            lines.append(f"recursive_found={candidate}")
+            Path(out_path).write_text("\n".join(lines) + f"\nFOUND={candidate}\n")
+            print(candidate)
+            raise SystemExit(0)
+
+Path(out_path).write_text("\n".join(lines) + "\nFOUND=\n")
+raise SystemExit(1)
+PY
+}
+
 gt_to_tum() {
   local src="$1" dst="$2"
   case "$src" in
@@ -370,8 +413,9 @@ PY
   fi
 
   gt=""
-  if gt="$(find_gt "$seq")"; then
+  if gt="$(find_gt "$seq")" || gt="$(find_gt_debug "$seq" "$run_dir/gt_search_debug.txt")"; then
     gt_tum="$run_dir/groundtruth.tum"
+    echo "gt_source=$gt" > "$run_dir/gt_source.txt"
     if gt_to_tum "$gt" "$gt_tum" > "$run_dir/gt_convert_stdout.txt" 2>&1; then
       run_evo_optional "$gt_tum" "$traj" "$run_dir/evo"
     else
@@ -381,6 +425,7 @@ PY
   else
     mkdir -p "$run_dir/evo"
     echo "EVO_SKIP missing EuRoC GT for $seq" > "$run_dir/evo/evo_status.txt"
+    find_gt_debug "$seq" "$run_dir/gt_search_debug.txt" >/dev/null 2>&1 || true
   fi
   ate="$(extract_metric "$run_dir/evo/evo_ape.txt")"
   rpe="$(extract_metric "$run_dir/evo/evo_rpe.txt")"
