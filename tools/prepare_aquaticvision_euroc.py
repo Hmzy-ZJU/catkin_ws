@@ -24,6 +24,8 @@ def find_dataset_dirs(root):
     for p in sorted(root.rglob("*")):
         if not p.is_dir():
             continue
+        if p.name == "Stereo images":
+            continue
         if (p / "Stereo images" / "l1").is_dir() and (p / "Stereo images" / "r1").is_dir():
             sid = sequence_id_from_name(p.name)
             seqs.append((sid, p.name, p))
@@ -132,6 +134,25 @@ def parse_baseline(root, fallback=None):
         m = re.search(r"baseline\s*:\s*([-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?)", txt, re.I)
         if m and abs(float(m.group(1))) > 1e-6:
             return abs(float(m.group(1)))
+        for key in ("T_cam0_cam1", "T_cam1_cam0", "T_cam0_to_cam1", "T_cam1_to_cam0"):
+            m = re.search(rf"{key}\s*:[^\n]*(?:\n\s*-\s*\[[^\]]+\]){{4}}", txt, re.I)
+            if not m:
+                continue
+            rows = re.findall(r"\[([^\]]+)\]", m.group(0))
+            if len(rows) >= 3:
+                t = []
+                for row in rows[:3]:
+                    xs = numbers(row)
+                    if len(xs) >= 4:
+                        t.append(xs[3])
+                if len(t) == 3:
+                    # For ORB-SLAM stereo settings, Camera.bf uses the horizontal
+                    # rectified baseline. Prefer |tx|; fall back to translation norm.
+                    if abs(t[0]) > 1e-6:
+                        return abs(t[0])
+                    norm = math.sqrt(sum(v * v for v in t))
+                    if norm > 1e-6:
+                        return norm
     raise RuntimeError("cannot parse stereo baseline from calibration files; set AQUATIC_BASELINE, e.g. AQUATIC_BASELINE=0.10")
 
 
@@ -203,12 +224,18 @@ def load_pairs(seq_dir):
             if not line or line.startswith("#"):
                 continue
             toks = re.split(r"[\s,]+", line)
-            if len(toks) == 1:
+            if len(toks) >= 4:
+                left_time, left_image, right_time, right_image = toks[:4]
+                lt, rt = left_image, right_image
+                ns = token_to_ns(left_time) or token_to_ns(left_image) or token_to_ns(right_time) or token_to_ns(right_image)
+            elif len(toks) == 1:
                 lt = rt = toks[0]
+                ns = token_to_ns(lt)
             else:
                 lt, rt = toks[0], toks[1]
+                ns = token_to_ns(lt) or token_to_ns(rt)
             idx = len(pairs)
-            ns = token_to_ns(lt) or token_to_ns(rt) or str(idx)
+            ns = ns or str(idx)
             pairs.append((ns, resolve_image(lmap, lfiles, lt, idx), resolve_image(rmap, rfiles, rt, idx)))
     else:
         for idx, (lp, rp) in enumerate(zip(lfiles, rfiles)):
