@@ -181,11 +181,17 @@ gt_to_tum() {
       ;;
     *.csv)
       python3 - "$src" "$dst" <<'PY'
-import csv
 import math
+import re
 import sys
 
 src, dst = sys.argv[1:3]
+
+def normalize_key(key):
+    key = key.strip().lstrip("#").strip()
+    key = re.sub(r"\s*\[.*?\]\s*", "", key)
+    key = key.replace(" ", "").lower()
+    return key
 
 def norm_stamp(v):
     t = float(v)
@@ -193,49 +199,66 @@ def norm_stamp(v):
         t *= 1e-9
     return t
 
-with open(src, newline="") as f:
-    sample = f.readline()
-    f.seek(0)
-    if sample.lstrip().startswith("#"):
-        header = [x.strip().lstrip("#").strip() for x in sample.strip().split(",")]
-        reader = csv.DictReader(f, fieldnames=header)
-        next(reader, None)
-    else:
-        reader = csv.DictReader(f)
+def split_line(line):
+    line = line.strip()
+    if "," in line:
+        return [x.strip() for x in line.split(",")]
+    return line.split()
 
-    rows = []
-    for row in reader:
-        if not row:
-            continue
-        try:
-            # EuRoC groundtruth CSV convention:
-            # timestamp, p_RS_R_x, p_RS_R_y, p_RS_R_z, q_RS_w, q_RS_x, q_RS_y, q_RS_z
-            stamp_key = next((k for k in row if "timestamp" in k.lower()), None)
-            if stamp_key is None:
-                keys = list(row.keys())
-                vals = [row[k] for k in keys]
-                t = norm_stamp(vals[0])
-                x, y, z = map(float, vals[1:4])
-                qw, qx, qy, qz = map(float, vals[4:8])
-            else:
-                t = norm_stamp(row[stamp_key])
-                x = float(row.get("p_RS_R_x", row.get("tx", row.get("x"))))
-                y = float(row.get("p_RS_R_y", row.get("ty", row.get("y"))))
-                z = float(row.get("p_RS_R_z", row.get("tz", row.get("z"))))
-                qw = float(row.get("q_RS_w", row.get("qw", "1")))
-                qx = float(row.get("q_RS_x", row.get("qx", "0")))
-                qy = float(row.get("q_RS_y", row.get("qy", "0")))
-                qz = float(row.get("q_RS_z", row.get("qz", "0")))
-            if all(math.isfinite(v) for v in (t, x, y, z, qx, qy, qz, qw)):
-                rows.append((t, x, y, z, qx, qy, qz, qw))
-        except Exception:
-            continue
+def value(row, aliases, default=None):
+    for alias in aliases:
+        key = normalize_key(alias)
+        if key in row and row[key] not in ("", None):
+            return row[key]
+    if default is not None:
+        return default
+    raise KeyError(",".join(aliases))
+
+raw_lines = [line.strip() for line in open(src, errors="ignore") if line.strip()]
+header = None
+data_lines = []
+for line in raw_lines:
+    fields = split_line(line.lstrip("#").strip())
+    if not fields:
+        continue
+    first = fields[0]
+    try:
+        float(first)
+        data_lines.append(line)
+    except ValueError:
+        if header is None:
+            header = fields
+
+rows = []
+for line in data_lines:
+    fields = split_line(line)
+    try:
+        if header and len(header) == len(fields):
+            row = {normalize_key(k): v for k, v in zip(header, fields)}
+            t = norm_stamp(value(row, ["timestamp", "#timestamp", "timestampns"]))
+            x = float(value(row, ["p_RS_R_x", "p_RS_R_x [m]", "tx", "x"]))
+            y = float(value(row, ["p_RS_R_y", "p_RS_R_y [m]", "ty", "y"]))
+            z = float(value(row, ["p_RS_R_z", "p_RS_R_z [m]", "tz", "z"]))
+            qw = float(value(row, ["q_RS_w", "q_RS_w []", "qw"], "1"))
+            qx = float(value(row, ["q_RS_x", "q_RS_x []", "qx"], "0"))
+            qy = float(value(row, ["q_RS_y", "q_RS_y []", "qy"], "0"))
+            qz = float(value(row, ["q_RS_z", "q_RS_z []", "qz"], "0"))
+        else:
+            vals = fields
+            t = norm_stamp(vals[0])
+            x, y, z = map(float, vals[1:4])
+            qw, qx, qy, qz = map(float, vals[4:8])
+        if all(math.isfinite(v) for v in (t, x, y, z, qx, qy, qz, qw)):
+            rows.append((t, x, y, z, qx, qy, qz, qw))
+    except Exception:
+        continue
 
 with open(dst, "w") as out:
     for r in rows:
         out.write("%.9f %.9f %.9f %.9f %.9f %.9f %.9f %.9f\n" % r)
 
 print(f"converted={len(rows)}")
+print(f"header={header if header else 'none'}")
 PY
       ;;
     *)
