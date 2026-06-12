@@ -443,27 +443,30 @@ def write_config(path, cam, baseline, stereo, fps, topk):
         f.write("\nEnableAdaptiveIDVO: 0\nAdaptivePolicyType: \"Fixed\"\nEnableAdaptiveLogging: 1\n")
 
 
-def write_inertial_config(path, cam0, cam1, imu, stereo, fps, topk):
+def write_inertial_config(path, cam0, cam1, imu, stereo, fps, topk, baseline=0.0):
     fps_value = int(round(fps))
     with open(path, "w", newline="\n") as f:
         f.write("%YAML:1.0\n")
         f.write("\n# Generated for AquaticVision IDVO/off inertial testing\n")
         f.write('File.version: "1.0"\n')
-        f.write('Camera.type: "PinHole"\n')
-        prefix = "Camera1" if stereo else "Camera1"
-        for k in ("fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2"):
+        # AquaticVision stereo images are already provided as an image-pair
+        # product. The full PinHole stereo-inertial path in ORB-SLAM3
+        # re-rectifies them from Stereo.T_c1_c2; with this dataset calibration
+        # that worsens row alignment and yields zero stereo points. Use the
+        # Rectified path so stereo-inertial matches the working stereo setup.
+        f.write('Camera.type: "Rectified"\n' if stereo else 'Camera.type: "PinHole"\n')
+        prefix = "Camera1"
+        keys = ("fx", "fy", "cx", "cy") if stereo else ("fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2")
+        for k in keys:
             f.write(f"{prefix}.{k}: {cam0[k]}\n")
         if stereo:
-            for k in ("fx", "fy", "cx", "cy", "k1", "k2", "p1", "p2"):
-                f.write(f"Camera2.{k}: {cam1[k]}\n")
+            f.write(f"Stereo.b: {baseline}\n")
         f.write(f"Camera.width: {int(cam0.get('width', 346))}\n")
         f.write(f"Camera.height: {int(cam0.get('height', 260))}\n")
         f.write(f"Camera.fps: {fps_value}\n")
         f.write("Camera.RGB: 0\n")
         if stereo:
             f.write("Stereo.ThDepth: 40.0\n")
-            vals = flatten_matrix(imu["T_c1_c2"])
-            f.write("Stereo.T_c1_c2: !!opencv-matrix\n  rows: 4\n  cols: 4\n  dt: f\n  data: [" + ", ".join(str(v) for v in vals) + "]\n")
         vals = flatten_matrix(imu["T_b_c1"])
         f.write("IMU.T_b_c1: !!opencv-matrix\n  rows: 4\n  cols: 4\n  dt: f\n  data: [" + ", ".join(str(v) for v in vals) + "]\n")
         f.write(f"IMU.NoiseGyro: {imu['noise_gyro']}\n")
@@ -555,9 +558,9 @@ def main():
     if args.stereo_config:
         write_config(args.stereo_config, cam, baseline, True, args.fps, args.topk)
     if args.mono_inertial_config:
-        write_inertial_config(args.mono_inertial_config, cam, cam_right, imu, False, args.fps, args.topk)
+        write_inertial_config(args.mono_inertial_config, cam, cam_right, imu, False, args.fps, args.topk, baseline)
     if args.stereo_inertial_config:
-        write_inertial_config(args.stereo_inertial_config, cam, cam_right, imu, True, args.fps, args.topk)
+        write_inertial_config(args.stereo_inertial_config, cam, cam_right, imu, True, args.fps, args.topk, baseline)
 
     print(f"sequence_id={sid}")
     print(f"sequence_name={name}")
