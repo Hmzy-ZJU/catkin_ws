@@ -192,19 +192,94 @@ extract_metric() {
 run_evo_optional() {
   local gt="$1" traj="$2" evo_dir="$3"
   mkdir -p "$evo_dir"
-  if [ ! -s "$gt" ] || [ ! -s "$traj" ]; then
-    echo "EVO_SKIP missing gt or trajectory" > "$evo_dir/evo_status.txt"
+  if [ ! -s "$gt" ]; then
+    echo "EVO_SKIP missing groundtruth" > "$evo_dir/evo_status.txt"
+    return 0
+  fi
+  if [ ! -s "$traj" ]; then
+    echo "EVO_SKIP missing trajectory" > "$evo_dir/evo_status.txt"
     return 0
   fi
   if ! command -v evo_ape >/dev/null 2>&1 || ! command -v evo_rpe >/dev/null 2>&1 || ! command -v evo_traj >/dev/null 2>&1; then
     echo "EVO_SKIP evo tools not found" > "$evo_dir/evo_status.txt"
     return 0
   fi
+
+  local gt_eval="$evo_dir/groundtruth_matched.tum"
+  local traj_eval="$evo_dir/estimated_matched.tum"
+  python3 - "$gt" "$traj" "$gt_eval" "$traj_eval" <<'PY' > "$evo_dir/match_timestamps_stdout.txt" 2>&1
+import bisect
+import sys
+
+gt_in, est_in, gt_out, est_out = sys.argv[1:5]
+
+def read_tum(path):
+    rows = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            if len(parts) < 8:
+                continue
+            stamp = float(parts[0])
+            if abs(stamp) > 1e12:
+                stamp /= 1e9
+            rows.append((stamp, parts))
+    return rows
+
+gt = read_tum(gt_in)
+est = read_tum(est_in)
+if len(gt) < 3 or len(est) < 3:
+    raise SystemExit(f"not enough poses for evo matching: gt={len(gt)}, est={len(est)}")
+
+gt_times = [r[0] for r in gt]
+offset = gt_times[0] - est[0][0]
+window_count = min(20, len(gt_times) - 1)
+window_span = gt_times[window_count] - gt_times[0] if window_count > 0 else 0.05
+max_dt = max(0.05, 2.5 * window_span / max(1, window_count))
+matches = []
+for est_t, est_parts in est:
+    target = est_t + offset
+    j = bisect.bisect_left(gt_times, target)
+    cand = []
+    if j < len(gt):
+        cand.append(j)
+    if j > 0:
+        cand.append(j - 1)
+    if not cand:
+        continue
+    best = min(cand, key=lambda i: abs(gt_times[i] - target))
+    dt = abs(gt_times[best] - target)
+    if dt <= max_dt:
+        matches.append((est_t, gt[best][1], est_parts, dt))
+
+if len(matches) < 3:
+    raise SystemExit(f"not enough matched poses: {len(matches)}, offset={offset}, max_dt={max_dt}")
+
+with open(gt_out, "w") as fg, open(est_out, "w") as fe:
+    for stamp, gt_parts, est_parts, _ in matches:
+        fg.write(" ".join([f"{stamp:.9f}"] + gt_parts[1:8]) + "\n")
+        fe.write(" ".join([f"{stamp:.9f}"] + est_parts[1:8]) + "\n")
+
+mean_dt = sum(m[3] for m in matches) / len(matches)
+print(f"matches={len(matches)}")
+print(f"offset={offset:.9f}")
+print(f"max_dt={max_dt:.9f}")
+print(f"mean_dt={mean_dt:.9f}")
+PY
+
+  if [ ! -s "$gt_eval" ] || [ ! -s "$traj_eval" ]; then
+    echo "EVO_SKIP failed to create matched TUM files" > "$evo_dir/evo_status.txt"
+    return 0
+  fi
+
   export MPLBACKEND=Agg
   echo "EVO_RUNNING" > "$evo_dir/evo_status.txt"
-  timeout --preserve-status "$EVO_TIMEOUT" evo_ape tum "$gt" "$traj" -a --align --correct_scale -s -v --save_results "$evo_dir/evo_ape.zip" --save_plot "$evo_dir/evo_ape_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_ape.txt" 2>&1 || echo "evo_ape failed or timed out" >> "$evo_dir/evo_status.txt"
-  timeout --preserve-status "$EVO_TIMEOUT" evo_rpe tum "$gt" "$traj" -a --align --correct_scale -s -v -r trans_part -d 1 -u f --save_results "$evo_dir/evo_rpe.zip" --save_plot "$evo_dir/evo_rpe_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_rpe.txt" 2>&1 || echo "evo_rpe failed or timed out" >> "$evo_dir/evo_status.txt"
-  timeout --preserve-status "$EVO_TIMEOUT" evo_traj tum "$traj" --ref "$gt" --align --correct_scale --save_plot "$evo_dir/evo_traj_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_traj.txt" 2>&1 || echo "evo_traj failed or timed out" >> "$evo_dir/evo_status.txt"
+  timeout --preserve-status "$EVO_TIMEOUT" evo_ape tum "$gt_eval" "$traj_eval" -a --align --correct_scale -s -v --save_results "$evo_dir/evo_ape.zip" --save_plot "$evo_dir/evo_ape_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_ape.txt" 2>&1 || echo "evo_ape failed or timed out" >> "$evo_dir/evo_status.txt"
+  timeout --preserve-status "$EVO_TIMEOUT" evo_rpe tum "$gt_eval" "$traj_eval" -a --align --correct_scale -s -v -r trans_part -d 1 -u f --save_results "$evo_dir/evo_rpe.zip" --save_plot "$evo_dir/evo_rpe_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_rpe.txt" 2>&1 || echo "evo_rpe failed or timed out" >> "$evo_dir/evo_status.txt"
+  timeout --preserve-status "$EVO_TIMEOUT" evo_traj tum "$traj_eval" --ref "$gt_eval" --align --correct_scale --save_plot "$evo_dir/evo_traj_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_traj.txt" 2>&1 || echo "evo_traj failed or timed out" >> "$evo_dir/evo_status.txt"
   echo "EVO_DONE" >> "$evo_dir/evo_status.txt"
 }
 
@@ -291,6 +366,14 @@ PY
   fi
   ate="$(extract_metric "$run_dir/evo/evo_ape.txt")"
   rpe="$(extract_metric "$run_dir/evo/evo_rpe.txt")"
+  if [ -z "$ate" ] || [ -z "$rpe" ]; then
+    local evo_note
+    evo_note="$(tr '\n' ';' < "$run_dir/evo/evo_status.txt" 2>/dev/null || printf 'missing_evo_status')"
+    if [ "$status" = "PASS" ]; then
+      status="PASS_NO_EVO"
+    fi
+    notes="${notes};evo_missing_metrics:${evo_note}"
+  fi
 
   write_row "exp4" "EuRoC" "$seq" "$SENSOR" "$mode" "$run_id" "$status" "$ate" "$rpe" "$completeness" "$traj_poses" "$input_frames" "$elapsed" "$cfg" "$traj" "$run_dir" "$notes"
 }
@@ -323,6 +406,8 @@ main() {
   log "Exp.4 finished"
   log "Summary: $SUMMARY"
   log "Raw results: $RESULT_ROOT"
+  log "Evo plot files:"
+  find "$RESULT_ROOT" -type f \( -name "evo_ape_plot_xy.pdf" -o -name "evo_rpe_plot_xy.pdf" -o -name "evo_traj_plot_xy.pdf" \) | sort | tee "$RESULT_ROOT/evo_plots.txt" | tee -a "$MASTER_LOG"
 }
 
 main "$@"
