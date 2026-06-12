@@ -260,6 +260,8 @@ Tracking::Tracking(System *pSys, ORBVocabulary* pVoc, FrameDrawer *pFrameDrawer,
 #ifdef REGISTER_TIMES
 double calcAverage(vector<double> v_times)
 {
+    if(v_times.empty())
+        return 0.0;
     double accum = 0;
     for(double value : v_times)
     {
@@ -271,6 +273,8 @@ double calcAverage(vector<double> v_times)
 
 double calcDeviation(vector<double> v_times, double average)
 {
+    if(v_times.empty())
+        return 0.0;
     double accum = 0;
     for(double value : v_times)
     {
@@ -281,6 +285,8 @@ double calcDeviation(vector<double> v_times, double average)
 
 double calcAverage(vector<int> v_values)
 {
+    if(v_values.empty())
+        return 0.0;
     double accum = 0;
     int total = 0;
     for(double value : v_values)
@@ -291,11 +297,15 @@ double calcAverage(vector<int> v_values)
         total++;
     }
 
+    if(total == 0)
+        return 0.0;
     return accum / total;
 }
 
 double calcDeviation(vector<int> v_values, double average)
 {
+    if(v_values.empty())
+        return 0.0;
     double accum = 0;
     int total = 0;
     for(double value : v_values)
@@ -305,7 +315,19 @@ double calcDeviation(vector<int> v_values, double average)
         accum += pow(value - average, 2);
         total++;
     }
+    if(total == 0)
+        return 0.0;
     return sqrt(accum / total);
+}
+
+static inline double valueOrZero(const vector<double>& values, const size_t idx)
+{
+    return idx < values.size() ? values[idx] : 0.0;
+}
+
+static inline int valueOrZero(const vector<int>& values, const size_t idx)
+{
+    return idx < values.size() ? values[idx] : 0;
 }
 
 void Tracking::LocalMapStats2File()
@@ -314,11 +336,12 @@ void Tracking::LocalMapStats2File()
     f.open("LocalMapTimeStats.txt");
     f << fixed << setprecision(6);
     f << "#Stereo rect[ms], MP culling[ms], MP creation[ms], LBA[ms], KF culling[ms], Total[ms]" << endl;
-    for(int i=0; i<mpLocalMapper->vdLMTotal_ms.size(); ++i)
+    const size_t nLocalMapRows = mpLocalMapper ? mpLocalMapper->vdLMTotal_ms.size() : 0;
+    for(size_t i=0; i<nLocalMapRows; ++i)
     {
-        f << mpLocalMapper->vdKFInsert_ms[i] << "," << mpLocalMapper->vdMPCulling_ms[i] << ","
-          << mpLocalMapper->vdMPCreation_ms[i] << "," << mpLocalMapper->vdLBASync_ms[i] << ","
-          << mpLocalMapper->vdKFCullingSync_ms[i] <<  "," << mpLocalMapper->vdLMTotal_ms[i] << endl;
+        f << valueOrZero(mpLocalMapper->vdKFInsert_ms, i) << "," << valueOrZero(mpLocalMapper->vdMPCulling_ms, i) << ","
+          << valueOrZero(mpLocalMapper->vdMPCreation_ms, i) << "," << valueOrZero(mpLocalMapper->vdLBASync_ms, i) << ","
+          << valueOrZero(mpLocalMapper->vdKFCullingSync_ms, i) <<  "," << valueOrZero(mpLocalMapper->vdLMTotal_ms, i) << endl;
     }
 
     f.close();
@@ -326,11 +349,12 @@ void Tracking::LocalMapStats2File()
     f.open("LBA_Stats.txt");
     f << fixed << setprecision(6);
     f << "#LBA time[ms], KF opt[#], KF fixed[#], MP[#], Edges[#]" << endl;
-    for(int i=0; i<mpLocalMapper->vdLBASync_ms.size(); ++i)
+    const size_t nLbaRows = mpLocalMapper ? mpLocalMapper->vdLBASync_ms.size() : 0;
+    for(size_t i=0; i<nLbaRows; ++i)
     {
-        f << mpLocalMapper->vdLBASync_ms[i] << "," << mpLocalMapper->vnLBA_KFopt[i] << ","
-          << mpLocalMapper->vnLBA_KFfixed[i] << "," << mpLocalMapper->vnLBA_MPs[i] << ","
-          << mpLocalMapper->vnLBA_edges[i] << endl;
+        f << valueOrZero(mpLocalMapper->vdLBASync_ms, i) << "," << valueOrZero(mpLocalMapper->vnLBA_KFopt, i) << ","
+          << valueOrZero(mpLocalMapper->vnLBA_KFfixed, i) << "," << valueOrZero(mpLocalMapper->vnLBA_MPs, i) << ","
+          << valueOrZero(mpLocalMapper->vnLBA_edges, i) << endl;
     }
 
 
@@ -342,8 +366,8 @@ void Tracking::TrackStats2File()
     ofstream f;
     f.open("SessionInfo.txt");
     f << fixed;
-    f << "Number of KFs: " << mpAtlas->GetAllKeyFrames().size() << endl;
-    f << "Number of MPs: " << mpAtlas->GetAllMapPoints().size() << endl;
+    f << "Number of KFs: " << (mpAtlas ? mpAtlas->GetAllKeyFrames().size() : 0) << endl;
+    f << "Number of MPs: " << (mpAtlas ? mpAtlas->GetAllMapPoints().size() : 0) << endl;
 
     f << "OpenCV version: " << CV_VERSION << endl;
 
@@ -354,34 +378,15 @@ void Tracking::TrackStats2File()
 
     f << "#Image Rect[ms], Image Resize[ms], ORB ext[ms], Stereo match[ms], IMU preint[ms], Pose pred[ms], LM track[ms], KF dec[ms], Total[ms]" << endl;
 
-    for(int i=0; i<vdTrackTotal_ms.size(); ++i)
+    for(size_t i=0; i<vdTrackTotal_ms.size(); ++i)
     {
-        double stereo_rect = 0.0;
-        if(!vdRectStereo_ms.empty())
-        {
-            stereo_rect = vdRectStereo_ms[i];
-        }
+        double stereo_rect = valueOrZero(vdRectStereo_ms, i);
+        double resize_image = valueOrZero(vdResizeImage_ms, i);
+        double stereo_match = valueOrZero(vdStereoMatch_ms, i);
+        double imu_preint = valueOrZero(vdIMUInteg_ms, i);
 
-        double resize_image = 0.0;
-        if(!vdResizeImage_ms.empty())
-        {
-            resize_image = vdResizeImage_ms[i];
-        }
-
-        double stereo_match = 0.0;
-        if(!vdStereoMatch_ms.empty())
-        {
-            stereo_match = vdStereoMatch_ms[i];
-        }
-
-        double imu_preint = 0.0;
-        if(!vdIMUInteg_ms.empty())
-        {
-            imu_preint = vdIMUInteg_ms[i];
-        }
-
-        f << stereo_rect << "," << resize_image << "," << vdORBExtract_ms[i] << "," << stereo_match << "," << imu_preint << ","
-          << vdPosePred_ms[i] <<  "," << vdLMTrack_ms[i] << "," << vdNewKF_ms[i] << "," << vdTrackTotal_ms[i] << endl;
+        f << stereo_rect << "," << resize_image << "," << valueOrZero(vdORBExtract_ms, i) << "," << stereo_match << "," << imu_preint << ","
+          << valueOrZero(vdPosePred_ms, i) <<  "," << valueOrZero(vdLMTrack_ms, i) << "," << valueOrZero(vdNewKF_ms, i) << "," << valueOrZero(vdTrackTotal_ms, i) << endl;
     }
 
     f.close();
