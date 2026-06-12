@@ -761,18 +761,52 @@ void System::SaveTrajectoryEuRoC(const string &filename)
         return;
     }*/
 
+    if(!mpAtlas)
+    {
+        cerr << "[SaveTrajectoryEuRoC] No atlas, writing empty trajectory: " << filename << endl;
+        ofstream emptyFile(filename.c_str());
+        emptyFile.close();
+        return;
+    }
+
     vector<Map*> vpMaps = mpAtlas->GetAllMaps();
-    int numMaxKFs = 0;
-    Map* pBiggerMap;
+    size_t numMaxKFs = 0;
+    Map* pBiggerMap = nullptr;
     std::cout << "There are " << std::to_string(vpMaps.size()) << " maps in the atlas" << std::endl;
     for(Map* pMap :vpMaps)
     {
-        std::cout << "  Map " << std::to_string(pMap->GetId()) << " has " << std::to_string(pMap->GetAllKeyFrames().size()) << " KFs" << std::endl;
-        if(pMap->GetAllKeyFrames().size() > numMaxKFs)
+        if(!pMap)
+            continue;
+        const size_t nKFs = pMap->GetAllKeyFrames().size();
+        std::cout << "  Map " << std::to_string(pMap->GetId()) << " has " << std::to_string(nKFs) << " KFs" << std::endl;
+        if(nKFs > numMaxKFs)
         {
-            numMaxKFs = pMap->GetAllKeyFrames().size();
+            numMaxKFs = nKFs;
             pBiggerMap = pMap;
         }
+    }
+
+    if(!pBiggerMap || numMaxKFs <= 0)
+    {
+        cerr << "[SaveTrajectoryEuRoC] No keyframes in atlas, writing empty trajectory: " << filename << endl;
+        ofstream emptyFile(filename.c_str());
+        emptyFile.close();
+        if(mpTracker)
+        {
+            const char* home = std::getenv("HOME");
+            std::string ros_home = home ? (std::string(home) + "/.ros/") : std::string("/tmp/");
+            std::string base = filename;
+            auto slash = base.find_last_of("/\\");
+            if (slash != std::string::npos) base = base.substr(slash + 1);
+            auto pos = base.rfind("_cam_traj.txt");
+            if (pos != std::string::npos) base = base.substr(0, pos);
+            else {
+                pos = base.rfind("_kf_traj.txt");
+                if (pos != std::string::npos) base = base.substr(0, pos);
+            }
+            mpTracker->SaveRuntimeStatsCSV(ros_home + base + "_perf.csv");
+        }
+        return;
     }
 
     vector<KeyFrame*> vpKFs = pBiggerMap->GetAllKeyFrames();
@@ -905,6 +939,13 @@ void System::SaveTrajectoryEuRoC(const string &filename)
 
 void System::SaveTrajectoryEuRoC(const string &filename, Map* pMap)
 {
+    if(!pMap)
+    {
+        cerr << "[SaveTrajectoryEuRoC] Null map, writing empty trajectory: " << filename << endl;
+        ofstream emptyFile(filename.c_str());
+        emptyFile.close();
+        return;
+    }
 
     cout << endl << "Saving trajectory of map " << pMap->GetId() << " to " << filename << " ..." << endl;
     /*if(mSensor==MONOCULAR)
@@ -917,6 +958,14 @@ void System::SaveTrajectoryEuRoC(const string &filename, Map* pMap)
 
     vector<KeyFrame*> vpKFs = pMap->GetAllKeyFrames();
     sort(vpKFs.begin(),vpKFs.end(),KeyFrame::lId);
+
+    if(vpKFs.empty())
+    {
+        cerr << "[SaveTrajectoryEuRoC] Map " << pMap->GetId() << " has no keyframes, writing empty trajectory: " << filename << endl;
+        ofstream emptyFile(filename.c_str());
+        emptyFile.close();
+        return;
+    }
 
     // Transform all keyframes so that the first keyframe is at the origin.
     // After a loop closure the first keyframe might not be at the origin.
@@ -1220,8 +1269,16 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename)
 {
     cout << endl << "Saving keyframe trajectory to " << filename << " ..." << endl;
 
+    if(!mpAtlas)
+    {
+        cerr << "[SaveKeyFrameTrajectoryEuRoC] No atlas, writing empty keyframe trajectory: " << filename << endl;
+        ofstream emptyFile(filename.c_str());
+        emptyFile.close();
+        return;
+    }
+
     vector<Map*> vpMaps = mpAtlas->GetAllMaps();
-    Map* pBiggerMap;
+    Map* pBiggerMap = nullptr;
     int numMaxKFs = 0;
     for(Map* pMap :vpMaps)
     {
@@ -1232,9 +1289,11 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename)
         }
     }
 
-    if(!pBiggerMap)
+    if(!pBiggerMap || numMaxKFs <= 0)
     {
-        std::cout << "There is not a map!!" << std::endl;
+        std::cout << "There is not a map with keyframes!!" << std::endl;
+        ofstream emptyFile(filename.c_str());
+        emptyFile.close();
         return;
     }
 
@@ -1276,10 +1335,26 @@ void System::SaveKeyFrameTrajectoryEuRoC(const string &filename)
 
 void System::SaveKeyFrameTrajectoryEuRoC(const string &filename, Map* pMap)
 {
+    if(!pMap)
+    {
+        cerr << "[SaveKeyFrameTrajectoryEuRoC] Null map, writing empty keyframe trajectory: " << filename << endl;
+        ofstream emptyFile(filename.c_str());
+        emptyFile.close();
+        return;
+    }
+
     cout << endl << "Saving keyframe trajectory of map " << pMap->GetId() << " to " << filename << " ..." << endl;
 
     vector<KeyFrame*> vpKFs = pMap->GetAllKeyFrames();
     sort(vpKFs.begin(),vpKFs.end(),KeyFrame::lId);
+
+    if(vpKFs.empty())
+    {
+        cerr << "[SaveKeyFrameTrajectoryEuRoC] Map " << pMap->GetId() << " has no keyframes, writing empty keyframe trajectory: " << filename << endl;
+        ofstream emptyFile(filename.c_str());
+        emptyFile.close();
+        return;
+    }
 
     // Transform all keyframes so that the first keyframe is at the origin.
     // After a loop closure the first keyframe might not be at the origin.
@@ -1795,4 +1870,3 @@ bool System::SaveMap(const string &filename)
 }
 
 } //namespace ORB_SLAM
-
