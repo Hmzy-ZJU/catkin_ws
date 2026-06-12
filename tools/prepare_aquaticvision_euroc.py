@@ -415,6 +415,7 @@ def write_config(path, cam, baseline, stereo, fps, topk):
 
 
 def write_inertial_config(path, cam0, cam1, imu, stereo, fps, topk):
+    fps_value = int(round(fps))
     with open(path, "w", newline="\n") as f:
         f.write("%YAML:1.0\n")
         f.write("\n# Generated for AquaticVision IDVO/off inertial testing\n")
@@ -428,7 +429,7 @@ def write_inertial_config(path, cam0, cam1, imu, stereo, fps, topk):
                 f.write(f"Camera2.{k}: {cam1[k]}\n")
         f.write(f"Camera.width: {int(cam0.get('width', 346))}\n")
         f.write(f"Camera.height: {int(cam0.get('height', 260))}\n")
-        f.write(f"Camera.fps: {fps}\n")
+        f.write(f"Camera.fps: {fps_value}\n")
         f.write("Camera.RGB: 0\n")
         if stereo:
             f.write("Stereo.ThDepth: 40.0\n")
