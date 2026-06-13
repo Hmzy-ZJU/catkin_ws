@@ -1,16 +1,14 @@
-/**
+﻿/**
 * InfoGain.h
 * Information-theoretic feature selection for ORB-SLAM3
 * 
 * This module implements Fisher Information-based feature selection
 * to retain only the most informative keypoints for pose estimation.
-* 信息论特征选择模块头文件，用于 ORB-SLAM3。
-*
-* 实现基于 Fisher 信息矩阵的特征选择，仅保留对位姿估计最有用的关键点。
-*/
+* 淇℃伅璁虹壒寰侀€夋嫨妯″潡澶存枃浠讹紝鐢ㄤ簬 ORB-SLAM3銆?*
+* 瀹炵幇鍩轰簬 Fisher 淇℃伅鐭╅樀鐨勭壒寰侀€夋嫨锛屼粎淇濈暀瀵逛綅濮夸及璁℃渶鏈夌敤鐨勫叧閿偣銆?*/
 #ifndef INFOGAIN_H
 #define INFOGAIN_H
-// ==== 头文件依赖 ====
+// ==== 澶存枃浠朵緷璧?====
 #include <vector>
 #include <Eigen/Core>
 #include <Eigen/Dense>
@@ -28,25 +26,25 @@ class MapPoint;
  */
 struct InfoSelectParams
 {
+    int topK;
+    float w_uniform;
+    float minPxDist;
+    bool useUniform;
+    double lambdaInit;
+    bool stereoSafeKeep;
 
-    int topK;              // 保留的最多特征点数
-    float w_uniform;       // 空间均匀性得分权重（0 ~ 1）
-    float minPxDist;       // 最小像素间距，用于计算密度
-    bool useUniform;       // 是否使用空间均匀性
-    double lambdaInit;     // Fisher 信息矩阵的初始正则项
-
-    // 默认构造函数，设定默认参数
     InfoSelectParams()
         : topK(400)
         , w_uniform(0.25f)
         , minPxDist(8.0f)
         , useUniform(true)
         , lambdaInit(1.0e-3)
+        , stereoSafeKeep(true)
     {}
 };
 
 /**
- * @brief 匹配点结构体，用于特征选择
+ * @brief 鍖归厤鐐圭粨鏋勪綋锛岀敤浜庣壒寰侀€夋嫨
  */
 struct MatchInfo
 {
@@ -59,17 +57,14 @@ struct MatchInfo
 };
 
 /**
- * @brief 信息增益选择主类
+ * @brief 淇℃伅澧炵泭閫夋嫨涓荤被
  */
 class InfoGain
 {
 public:
     /**
-     * @brief 主函数：根据信息增益选择 top-K 特征点
-     * @param F 当前帧对象
-     * @param matches 关键点与地图点匹配列表
-     * @param params 特征选择参数
-     * @return 被选择的特征点索引列表
+     * @brief 涓诲嚱鏁帮細鏍规嵁淇℃伅澧炵泭閫夋嫨 top-K 鐗瑰緛鐐?     * @param F 褰撳墠甯у璞?     * @param matches 鍏抽敭鐐逛笌鍦板浘鐐瑰尮閰嶅垪琛?     * @param params 鐗瑰緛閫夋嫨鍙傛暟
+     * @return 琚€夋嫨鐨勭壒寰佺偣绱㈠紩鍒楄〃
      */
     static std::vector<int> SelectByInformationGain(
         Frame& F,
@@ -77,12 +72,9 @@ public:
         const InfoSelectParams& params);
 
     /**
-     * @brief 计算所选特征点对当前相机姿态的 Fisher 信息矩阵
-     * @param F 当前帧
-     * @param selectedIndices 被选中点的索引
-     * @param lambda 正则参数，避免奇异矩阵
-     * @return 6x6 的 Fisher 信息矩阵（Hessian）
-     */
+     * @brief 璁＄畻鎵€閫夌壒寰佺偣瀵瑰綋鍓嶇浉鏈哄Э鎬佺殑 Fisher 淇℃伅鐭╅樀
+     * @param F 褰撳墠甯?     * @param selectedIndices 琚€変腑鐐圭殑绱㈠紩
+     * @param lambda 姝ｅ垯鍙傛暟锛岄伩鍏嶅寮傜煩闃?     * @return 6x6 鐨?Fisher 淇℃伅鐭╅樀锛圚essian锛?     */
     static Eigen::Matrix<double,6,6> ComputePoseInformation(
         Frame& F,
         const std::vector<int>& selectedIndices,
@@ -90,23 +82,20 @@ public:
 
 private:
     /**
-     * @brief 构建一个特征点在当前位姿下对位姿的 Jacobian 矩阵
-     * @param Pw 世界坐标系下的三维点
-     * @param Tcw 相机位姿（世界->相机）
-     * @param fx 相机焦距 fx
-     * @param fy 相机焦距 fy
-     * @return 2x6 的雅可比矩阵，表示 u,v 对 6 DoF 位姿的偏导
-     */
+     * @brief 鏋勫缓涓€涓壒寰佺偣鍦ㄥ綋鍓嶄綅濮夸笅瀵逛綅濮跨殑 Jacobian 鐭╅樀
+     * @param Pw 涓栫晫鍧愭爣绯讳笅鐨勪笁缁寸偣
+     * @param Tcw 鐩告満浣嶅Э锛堜笘鐣?>鐩告満锛?     * @param fx 鐩告満鐒﹁窛 fx
+     * @param fy 鐩告満鐒﹁窛 fy
+     * @return 2x6 鐨勯泤鍙瘮鐭╅樀锛岃〃绀?u,v 瀵?6 DoF 浣嶅Э鐨勫亸瀵?     */
     static Eigen::Matrix<double,2,6> BuildJacobianForPoint(
         const Eigen::Vector3f& Pw,
         const Sophus::SE3f& Tcw,
         float fx, float fy);
 
     /**
-     * @brief 从 Sophus 的 SE3 提取旋转和平移
-     * @param Tcw 相机位姿
-     * @param R 输出：3x3 旋转矩阵
-     * @param t 输出：3x1 平移向量
+     * @brief 浠?Sophus 鐨?SE3 鎻愬彇鏃嬭浆鍜屽钩绉?     * @param Tcw 鐩告満浣嶅Э
+     * @param R 杈撳嚭锛?x3 鏃嬭浆鐭╅樀
+     * @param t 杈撳嚭锛?x1 骞崇Щ鍚戦噺
      */
     static inline void ExtractPoseRt(
         const Sophus::SE3f& Tcw,
@@ -118,12 +107,9 @@ private:
     }
 
     /**
-     * @brief 计算加入一个特征点后增加的信息量（以 bit 为单位）
-     * @param H 当前 Fisher 信息矩阵
-     * @param J 当前特征点的 Jacobian（2x6）
-     * @param lambda 正则项
-     * @return 信息增益（bit）
-     */
+     * @brief 璁＄畻鍔犲叆涓€涓壒寰佺偣鍚庡鍔犵殑淇℃伅閲忥紙浠?bit 涓哄崟浣嶏級
+     * @param H 褰撳墠 Fisher 淇℃伅鐭╅樀
+     * @param J 褰撳墠鐗瑰緛鐐圭殑 Jacobian锛?x6锛?     * @param lambda 姝ｅ垯椤?     * @return 淇℃伅澧炵泭锛坆it锛?     */
     static inline double DeltaBits(
         const Eigen::Matrix<double,6,6>& H,
         const Eigen::Matrix<double,2,6>& J,
@@ -134,13 +120,12 @@ private:
         Eigen::LLT<Eigen::Matrix<double,6,6>> llt(H_reg);
         
         if(llt.info() != Eigen::Success) {
-            // 如果分解失败，返回默认最小增益
-            return 0.1;
+            // 濡傛灉鍒嗚В澶辫触锛岃繑鍥為粯璁ゆ渶灏忓鐩?            return 0.1;
         }
         
         Eigen::Matrix<double,6,6> H_inv = llt.solve(Eigen::Matrix<double,6,6>::Identity());
         
-        // 使用 Woodbury 恒等式计算增益：
+        // 浣跨敤 Woodbury 鎭掔瓑寮忚绠楀鐩婏細
         // det(H + J^T*J) / det(H) = det(I + J*H_inv*J^T)
         Eigen::Matrix<double,2,2> inner = Eigen::Matrix<double,2,2>::Identity() 
                                          + J * H_inv * J.transpose();
@@ -150,14 +135,13 @@ private:
             return 0.1;
         }
         
-        // 信息增益 = 0.5 * log2(det_ratio)
+        // 淇℃伅澧炵泭 = 0.5 * log2(det_ratio)
         return 0.5 * std::log2(det_inner);
     }
 
     /**
-     * @brief 使用 Woodbury 公式更新 Fisher 信息矩阵
-     * @param H 输入/输出：当前信息矩阵
-     * @param J 被加入特征点的雅可比矩阵
+     * @brief 浣跨敤 Woodbury 鍏紡鏇存柊 Fisher 淇℃伅鐭╅樀
+     * @param H 杈撳叆/杈撳嚭锛氬綋鍓嶄俊鎭煩闃?     * @param J 琚姞鍏ョ壒寰佺偣鐨勯泤鍙瘮鐭╅樀
      */
     static inline void WoodburyUpdate(
         Eigen::Matrix<double,6,6>& H,

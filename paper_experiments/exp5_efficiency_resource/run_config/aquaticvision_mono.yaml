@@ -43,6 +43,7 @@ InfoSelector.UseUniform: 1
 InfoSelector.w_uniform: 0.12
 InfoSelector.MinPxDist: 7
 InfoSelector.LambdaInit: 1.0e-3
+InfoSelector.StereoSafeKeep: 0
 
 InfoKF.Use: 1
 InfoKF.AllowBitsDrop: 2.2

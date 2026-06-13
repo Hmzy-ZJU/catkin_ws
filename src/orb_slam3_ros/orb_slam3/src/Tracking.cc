@@ -3841,7 +3841,7 @@ bool Tracking::TrackLocalMap()
             int minKeep = std::min(std::max(20, frameInfoSelParams.topK / 2), nBefore);
             const bool stereoLike =
                 (mSensor == System::STEREO || mSensor == System::IMU_STEREO);
-            if(stereoLike)
+            if(stereoLike && frameInfoSelParams.stereoSafeKeep)
             {
                 const int stereoSafeKeep = std::min(
                     nBefore,
@@ -4497,7 +4497,8 @@ void Tracking::LoadInfoParams(cv::FileStorage& fSettings)
         hasNode("InfoSelector.w_uniform") ||
         hasNode("InfoSelector.MinPxDist") ||
         hasNode("InfoSelector.UseUniform") ||
-        hasNode("InfoSelector.LambdaInit");
+        hasNode("InfoSelector.LambdaInit") ||
+        hasNode("InfoSelector.StereoSafeKeep");
 
     const bool hasInfoKFConfig =
         hasNode("InfoKF.Use") ||
@@ -4539,6 +4540,10 @@ void Tracking::LoadInfoParams(cv::FileStorage& fSettings)
         node = fSettings["InfoSelector.LambdaInit"];
         if (!node.empty())
             mInfoSelParams.lambdaInit = (double)node;
+
+        node = fSettings["InfoSelector.StereoSafeKeep"];
+        if (!node.empty())
+            mInfoSelParams.stereoSafeKeep = ((int)node != 0);
     }
 
     if (hasInfoKFConfig)
@@ -4591,6 +4596,7 @@ void Tracking::LoadInfoParams(cv::FileStorage& fSettings)
               << "  InfoSelector enabled: " << (mUseInfoSelector ? "YES" : "NO") << "\n"
               << "  TopK: " << mInfoSelParams.topK << "\n"
               << "  w_uniform: " << mInfoSelParams.w_uniform << "\n"
+              << "  StereoSafeKeep: " << (mInfoSelParams.stereoSafeKeep ? "YES" : "NO") << "\n"
               << "  InfoKF enabled: " << (mInfoKFParams.use ? "YES" : "NO") << "\n"
               << "  AllowBitsDrop(bits): " << mInfoKFParams.allowBitsDrop << "\n"
               << "  Dyn(alpha,beta,tau[min,max]): "
