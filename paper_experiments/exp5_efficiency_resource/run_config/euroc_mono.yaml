@@ -1,0 +1,64 @@
+%YAML:1.0
+
+# Exp.5 EuRoC mono base configuration.
+# Edit this file to change experiment parameters; the script only injects mode switches and log paths.
+
+File.version: "1.0"
+UWIDVO.Mode: "IDVO"
+
+Camera.type: "PinHole"
+Camera1.fx: 458.654
+Camera1.fy: 457.296
+Camera1.cx: 367.215
+Camera1.cy: 248.375
+Camera1.k1: -0.28340811
+Camera1.k2: 0.07395907
+Camera1.p1: 0.00019359
+Camera1.p2: 1.76187114e-05
+Camera.width: 752
+Camera.height: 480
+Camera.newWidth: 600
+Camera.newHeight: 350
+Camera.fps: 20
+Camera.RGB: 1
+
+ORBextractor.nFeatures: 1000
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0
+
+# UW-IDVO paper parameters, Table I.
+InfoSelector.Enable: 1
+InfoSelector.TopK: 95
+InfoSelector.UseUniform: 1
+InfoSelector.w_uniform: 0.12
+InfoSelector.MinPxDist: 7
+InfoSelector.LambdaInit: 1.0e-3
+
+InfoKF.Use: 1
+InfoKF.AllowBitsDrop: 2.2
+InfoKF.LambdaMean: 1.0e-3
+InfoKF.Dyn.Alpha: 0.25
+InfoKF.Dyn.Beta: 0.0
+InfoKF.Dyn.TauMin: 0.1
+InfoKF.Dyn.TauMax: 5.0
+InfoKF.Cum.Decay: 0.95
+InfoKF.Cum.Thr: 0.5
+InfoKF.MaxFramesForce: 300
+
+EnableAdaptiveIDVO: 0
+AdaptivePolicyType: "Fixed"
+EnableAdaptiveLogging: 1
+AdaptiveLogPath: "adaptive_frames.csv"

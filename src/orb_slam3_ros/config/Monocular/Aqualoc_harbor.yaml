@@ -59,17 +59,17 @@ uwfusion.exposed_sigma: 0.25
 
 # ==================== InfoSelector（点号扁平写法） ====================
 InfoSelector.Enable: 1
-InfoSelector.TopK: 100
+InfoSelector.TopK: 95
 
-InfoSelector.w_uniform: 0.25
-InfoSelector.MinPxDist: 8
+InfoSelector.w_uniform: 0.12
+InfoSelector.MinPxDist: 7
 InfoSelector.UseUniform: 1
 InfoSelector.LambdaInit: 1.0e-3
 
 
 # =============== InfoKF (keyframe gating) ===============
 InfoKF.Use: 1
-InfoKF.AllowBitsDrop: 0.01        # 基本阈值 τ（正数）
+InfoKF.AllowBitsDrop: 2.2        # 基本阈值 τ（正数）
 # 基本阈值 τ_basic（单位：bit）。判据之一：当 ΔE < -τ_basic 时允许插帧。
 # 物理含义：ΔE = 0.5 * log2(|Λ_curr|/|Λ_ref|)。ΔE 为负表示信息下降（不确定性增大）。
 # 数学换算：|Λ_curr|/|Λ_ref| < 2^(-2*τ_basic) 时触发。例如 τ_basic=0.02 → 比例约 < 0.972（≈ 2.8% 下降）。
@@ -79,18 +79,18 @@ InfoKF.AllowBitsDrop: 0.01        # 基本阈值 τ（正数）
 InfoKF.LambdaMean: 1.0e-3
 
 # 动态阈值 τ_t = α*(1 - n_matches/n_ref) + β，且裁剪到 [τ_min, τ_max]
-InfoKF.Dyn.Alpha: 0.02            # α（匹配少时放宽）
+InfoKF.Dyn.Alpha: 0.25            # α（匹配少时放宽）
 # α：乘在 (1 - ratio) 上的系数。当前公式下，“匹配越少 τ_t 越大（越严格）”的主控参数。
 # 调大：匹配少的时刻阈值被拉得更高 → 更不容易插帧 → KF 更少，可能导致断跟。
 # 调小：弱纹理/对准变差时更容易过门 → KF 稍多、更稳。
 # 若你希望“匹配少更宽松”，请将公式改成 τ_t = α + β*ratio；此时 α 是“最低阈值”。
-InfoKF.Dyn.Beta:  0.20            # β（基线阈值）
+InfoKF.Dyn.Beta:  0.0            # β（基线阈值）
 # β：动态阈值的基线项（始终加上）。
 # 调大：整体阈值上移（更严格）→ KF 更少。
 # 调小：整体阈值下移（更宽松）→ KF 更多。
 # 一般与 Alpha 共同决定动态阈值的区间中心
-InfoKF.Dyn.TauMin: 0.03
-InfoKF.Dyn.TauMax: 0.60
+InfoKF.Dyn.TauMin: 0.1
+InfoKF.Dyn.TauMax: 5.0
 
 # 累计下降 D_t = ρ*D_{t-1} + min(0,ΔE_t)；触发 D_t < -Θ_cum
 InfoKF.Cum.Decay: 0.95            # ρ （0.9~0.98）

@@ -1,0 +1,72 @@
+%YAML:1.0
+
+# Exp.5 AQUALOC Harbor mono base configuration.
+# Edit this file to change experiment parameters; the script only injects mode switches and log paths.
+
+UWIDVO.Mode: "IDVO"
+
+Camera.type: "KannalaBrandt8"
+Camera.fx: 413.32595366566017
+Camera.fy: 413.70198739483686
+Camera.cx: 305.9507483284928
+Camera.cy: 259.4439948946375
+Camera.k1: -0.06125568297136998
+Camera.k2: -0.003796743395135256
+Camera.k3: 0.027326634771204592
+Camera.k4: -0.030296403142887066
+Camera.width: 640
+Camera.height: 512
+Camera.fps: 20.0
+Camera.RGB: true
+
+ORBextractor.nFeatures: 900
+ORBextractor.scaleFactor: 1.2
+ORBextractor.nLevels: 8
+ORBextractor.iniThFAST: 12
+ORBextractor.minThFAST: 7
+
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -1.8
+Viewer.ViewpointF: 500.0
+
+uwfusion.enable: 1
+uwfusion.levels: 4
+uwfusion.scb_percent: 0.6
+uwfusion.bilateral_d: 3
+uwfusion.bilateral_sigma_color: 4.0
+uwfusion.bilateral_sigma_space: 3.5
+uwfusion.clahe_clip: 1.4
+uwfusion.clahe_tile: 8
+uwfusion.exposed_avg: 0.5
+uwfusion.exposed_sigma: 0.25
+
+# UW-IDVO paper parameters, Table I.
+InfoSelector.Enable: 1
+InfoSelector.TopK: 95
+InfoSelector.UseUniform: 1
+InfoSelector.w_uniform: 0.12
+InfoSelector.MinPxDist: 7
+InfoSelector.LambdaInit: 1.0e-3
+
+InfoKF.Use: 1
+InfoKF.AllowBitsDrop: 2.2
+InfoKF.LambdaMean: 1.0e-3
+InfoKF.Dyn.Alpha: 0.25
+InfoKF.Dyn.Beta: 0.0
+InfoKF.Dyn.TauMin: 0.1
+InfoKF.Dyn.TauMax: 5.0
+InfoKF.Cum.Decay: 0.95
+InfoKF.Cum.Thr: 0.5
+InfoKF.MaxFramesForce: 15
+
+EnableAdaptiveIDVO: 0
+AdaptivePolicyType: "Fixed"
+EnableAdaptiveLogging: 1
+AdaptiveLogPath: "adaptive_frames.csv"

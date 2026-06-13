@@ -1,0 +1,991 @@
+
+--- PAGE 1 ---
+IEEE ROBOTICS AND AUTOMATION LETTERS 1
+UW-IDVO: An Underwater Information-Driven Visual Odometry
+Front-End
+Abstract—Underwater visual SLAM on resource-constrained
+Unmanned Underwater Vehicles is challenged by degraded im-
+agery and high computational cost. This paper presents an
+Underwater Information-Driven Visual Odometry (UW-IDVO)
+front-end that improves runtime and memory efficiency while
+maintaining reliable pose accuracy. UW-IDVO consists of an
+Information-Driven Point Selection (IDPS) strategy and an
+Information-Driven Keyframe Decision (IDKD) strategy. IDPS
+builds a pose Fisher information matrix from reprojection
+Jacobians, assigns each map point match an information score
+and a uniformity score, and fuses them into a selection score to
+retain selected informative points for pose optimization. IDKD
+makes keyframe decisions based on information variation using
+an adaptive threshold and a cumulative degradation check, which
+suppresses redundant keyframes and bounds local optimization
+growth. We integrate UW-IDVO into the monocular ORB-
+SLAM3 front-end and evaluate it on AQUALOC and EuRoC,
+where experiments demonstrate its effectiveness and robustness.
+We will release our open-source code to the community.
+Index Terms —Underwater SLAM, Visual Odometry,
+Information-Driven, Lightweight.
+I. I NTRODUCTION
+A
+CCURATE self-localization and navigation are crucial
+for Unmanned Underwater Vehicles (UUVs) to execute
+complex tasks. Acoustic navigation sensors such as Doppler
+Velocity Logs (DVLs) and Ultra-Short Baseline (USBL) sys-
+tems provide reliable positioning, but their high cost, size,
+and power consumption limit their use on small and low-cost
+UUVs [1]. For resource-constrained UUVs, a compact low-
+power camera paired with an inertial measurement unit offers
+a more practical and scalable alternative. Consequently, visual
+simultaneous localization and mapping (V-SLAM) has become
+a promising solution for underwater autonomous navigation
+[2].
+Existing SLAM frameworks, such as VINS-Fusion [3] and
+ORB-SLAM3 [4], perform well in ground and aerial appli-
+cations. However, their performance drops significantly when
+deployed on a resource-constrained UUV due to the combined
+impact of environmental degradation and limited onboard
+computation [5]. Underwater imaging quality is affected by
+light absorption, scattering from suspended particles, color
+distortion, low contrast, and motion blur. These factors make
+it difficult to obtain stable visual observations, which often
+lead to tracking failures. Meanwhile, underwater degradations
+typically force the system to detect more observations to
+maintain tracking. The front-end of a V-SLAM system is
+already the most computationally demanding component [6].
+On a resource-constrained UUV , handling a large number of
+low signal-to-noise ratio (SNR) and redundant observations
+wastes valuable computational resources. It also reduces the
+resources available for back-end optimization and loop closure
+detection, which may eventually cause the system to fail.
+ 
+  
+Baseline Ours
+Baseline Ours
+Time [ms]
+0
+20
+40
+60
+80
+100
+120
+122.8
+30.1
+Baseline Ours
+Memory [MB]
+0
+200
+400
+600
+800
+1000
+1200 1120
+722
+(b) (c)
+75% 35%
+(a)
+Fig. 1. Results on AQUALOC Harbor 2. (a) Trajectory comparison between
+the baseline (ORB-SLAM3) and the proposed UW-IDVO. The difference
+between the two trajectories is almost unnoticeable. (b) UW-IDVO reduces
+the average per-frame tracking and local bundle adjustment runtime by 75%
+compared with the baseline. (c) UW-IDVO reduces the overall memory usage
+by 35%, reflecting the substantially smaller map and optimization window.
+Recent research has made significant efforts to improve
+the visibility of underwater images [7]. These approaches
+aim to mitigate the degradation introduced by underwater
+imaging conditions. They can enhance visual inputs to some
+extent, but their computational cost remains non-negligible
+on a resource-constrained UUV [8]. In addition, existing
+lightweight solutions focus mainly on accelerating image
+enhancement algorithms or compressing neural networks [9].
+They lack optimizations that arise from the structure of V-
+SLAM itself, such as map point selection strategies and
+keyframe management. As a result, a key gap remains in
+current research: how can we reduce the computational scale
+of the visual odometry front-end so that V-SLAM remains
+accurate and efficient on resource-constrained UUVs?
+In this paper, we present an Underwater Information-Driven
+Visual Odometry front-end (UW-IDVO), which is designed
+to significantly reduce the size and computational load of
+the front-end optimization while preserving pose accuracy.
+A representative example is shown in Fig. 1, where UW-
+IDVO matches the trajectory accuracy of the baseline while
+substantially reducing the per-frame computational time and
+lowering the overall memory usage. The main contributions
+CONFIDENTIAL. Limited circulation. For review only
+IEEE RA-L submission 25-6014.1
+Preprint submitted to IEEE Robotics and Automation Letters as Submission for RA-L only
+Received December 29, 2025 20:43:47 Pacific Time
+
+--- PAGE 2 ---
+IEEE ROBOTICS AND AUTOMATION LETTERS 2
+of this work are summarized as follows:
+1) We present UW-IDVO, an underwater information-
+driven visual odometry front-end for resource-
+constrained UUVs. It reduces front-end cost by
+limiting the number of map point matches used for
+pose estimation through an Information-Driven Point
+Selection (IDPS) strategy and regulating keyframe
+growth through an Information-Driven Keyframe
+Decision (IDKD) strategy.
+2) An IDPS strategy based on the Fisher information matrix
+(FIM) is developed. It assigns each map point match
+a selection score and retains only the highest-scoring
+matches for optimization.
+3) We propose IDKD strategy that monitors informa-
+tion variation and applies adaptive thresholding with
+a cumulative degradation check, suppressing redundant
+keyframes and bounding the local bundle adjustment
+window.
+4) UW-IDVO is integrated into the monocular configu-
+ration of the classical ORB-SLAM3 framework and
+systematically evaluated on the public AQUALOC [10]
+underwater dataset and the EuRoC [11] dataset, demon-
+strating the efficiency and robustness of the proposed
+approach.
+II. R ELATED WORK
+A. Underwater Visual SLAM
+Underwater SLAM research increasingly focuses on multi-
+sensor fusion to mitigate the instability of visual perception
+in harsh underwater environments. These approaches typi-
+cally tightly fuse visual observations with inertial, pressure,
+acoustic, magnetic, imaging sonar, or DVL data, enabling
+more robust localization under low-visibility or highly turbid
+conditions [12]–[16]. However, visual sensors provide rich
+environmental information and therefore remain the primary
+sensing modality in most underwater missions [17]. Most
+existing work on underwater vision focuses on improving input
+image quality. However, image enhancement still leaves many
+noisy observations. The V-SLAM front-end must process a
+large number of low-information map points, which leads to
+unstable tracking and increases the burden of local bundle ad-
+justment [18]. Existing methods lack mechanisms that evaluate
+the quality of underwater visual observations from the front-
+end perspective and proactively constrain the computational
+scale.
+B. Underwater Lightweight SLAM
+Lightweight underwater SLAM methods can be broadly
+categorized into front-end and back-end strategies [19]. Front-
+end approaches typically reduce the volume of image data
+to be processed by applying fast de-scattering, salient region
+filtering, or lightweight enhancement models [20]. However,
+these methods mainly improve the quality of the observa-
+tions themselves and cannot eliminate the large number of
+unstable measurements that the front-end must still handle
+in degraded underwater environments. Back-end lightweight
+strategies commonly rely on keyframe pruning, window size
+Camera
+（mono）
+Extract ORB
+Initial Feature 
+Matching
+Initial Pose 
+Estimation
+Track Local Map
+KeyFrame 
+Insertion
+Recent MapPoints 
+Culling
+New Points 
+Creation
+Local BA
+Local KeyFrames 
+Culling
+UW-IDVO Front-End 
+Fisher Information Matrix
+Selection Score
+Selected 
+Informative 
+Points
+Information-Driven Point Selection
+Reprojection Jacobians
+Information Variation
+Adaptive Threshold
+Cumulative Degradation
+KeyFrame 
+Decision
+Information-Driven Keyframe Decision
+SENSORS
+TRACKING
+LOCAL MAPPING
+Active Map
+Non-Active Maps
+ATLAS
+Active Map
+Non-Active Maps
+ATLAS
+Visual Vocabulary
+Recognition 
+Database
+DBOW2 
+Visual Vocabulary
+Recognition 
+Database
+DBOW2 
+Map Update
+FuIl BA
+FULL BA
+Map Update
+FuIl BA
+FULL BA
+Place 
+recognition
+Loop 
+Correction
+Map Merging
+LOOP & MAP MERGING
+Place 
+recognition
+Loop 
+Correction
+Map Merging
+LOOP & MAP MERGING
+Fig. 2. Overall system architecture of the proposed UW-IDVO integrated into
+ORB-SLAM3. The front-end introduces information-driven point selection
+and keyframe decision modules.
+reduction, or sparsification of the optimization graph to control
+the state dimension [21]. Such techniques can reduce the
+computational load to some extent, but they do not directly
+decrease the number of observations that the front-end must
+process and thus cannot control the overall computational
+burden at its source. Information-driven approaches offer a
+more principled direction for lightweight SLAM [22], [23].
+Existing studies have shown that measuring the information
+contribution of observations has significant potential for model
+simplification [24], [25]. In this context, we focus on adapting
+information-driven mechanisms to the SLAM front-end in
+underwater settings, aiming to control the computational scale
+while improving overall system efficiency.
+III. S YSTEM OVERVIEW
+The ORB-SLAM family is widely used as a baseline
+framework for underwater SLAM due to its robust and mature
+architecture [26]. In this work, the proposed UW-IDVO is
+integrated into the front-end of ORB-SLAM3. The overall
+system structure is shown in Fig. 2.
+Following the Track Local Map procedure in ORB-SLAM,
+once an initial camera pose estimate and an initial set of feature
+matches are available, the system projects a local map into
+the frame and searches more map point matches. In the native
+pipeline, the camera pose is refined by performing motion-
+only bundle adjustment (motion-only BA) using all map point
+matches found in the current frame. In our system, we insert
+an IDPS module between local-map reprojection matching and
+motion-only BA.
+IDPS starts from the candidate set of points and computes
+the corresponding reprojection Jacobians. These Jacobians are
+used to form a Fisher information matrix that characterizes
+how strongly the available measurements constrain the camera
+pose. Based on this matrix, each candidate point is assigned an
+information score that reflects its contribution to reducing pose
+uncertainty. To avoid selecting points that cluster in highly
+textured regions, we additionally compute a uniformity score
+CONFIDENTIAL. Limited circulation. For review only
+IEEE RA-L submission 25-6014.1
+Preprint submitted to IEEE Robotics and Automation Letters as Submission for RA-L only
+Received December 29, 2025 20:43:47 Pacific Time
+
+--- PAGE 3 ---
+IEEE ROBOTICS AND AUTOMATION LETTERS 3
+from the spatial distribution of points in the image. The two
+terms are then combined into a selection score, which is used
+to rank all candidates and retain only a compact subset of
+selected informative points, while the remaining points are
+pruned so that they do not contribute residual terms in the
+subsequent optimization. Consequently, the reduced point set
+lowers the computational cost of the downstream estimation
+pipeline.
+In addition, we introduce an IDKD strategy to regulate
+keyframe creation and further reduce the back-end workload.
+IDKD first evaluates the information variation between the
+current frame and the last keyframe, then applies an adaptive
+threshold to judge whether the change is significant under
+the current tracking condition, and finally checks cumulative
+degradation to capture persistent information loss over time.
+These cues are jointly used to produce the final keyframe
+decision, which avoids redundant keyframes and lowers the
+computational cost of subsequent local mapping operations.
+The proposed framework preserves the original data struc-
+tures and module organization of ORB-SLAM3 and can be
+implemented on top of the existing codebase with minimal
+changes. By controlling the computational scale of the front-
+end, the burden on the back-end optimization is directly
+reduced and the overall system efficiency is improved.
+IV. METHOD
+A. Model F ormulation
+We adopt the standard motion and imaging model used in
+visual odometry. The camera pose is represented by Tcw ∈
+SE(3), which denotes the rigid-body transformation from the
+world coordinate frame ( w) to the camera coordinate frame
+(c). For each map point Pw
+j ∈ R3 in ( w), its coordinates in
+(c) are denoted by Pc
+j.
+As described in the system overview, the tracking front-end
+establishes map point matches in each frame. We denote the
+set of all established map point matches in the current frame
+by
+Ct = {(ˆuj, Pw
+j )}Nt
+j=1, N t = |Ct|. (1)
+Here, Ct is the candidate point set at time t, and Nt is the
+number of candidate points in Ct. Each candidate point is a
+matched 2D–3D pair consisting of a 2D keypoint observation
+ˆuj in the current image and its associated 3D map point Pw
+j in
+the world frame. The candidate set consists of two groups of
+established map point matches. One group is propagated from
+the previous tracking step, and the other is newly obtained by
+projecting local map points into the current frame.
+Under the pinhole model, the reprojection residual for point
+j ∈ C t is
+rj = ˆuj − Π(Pc
+j), (2)
+with independent Gaussian pixel noise rj ∼ N (0, Σr), where
+Σr = σ2
+rI2.
+Pose updates are expressed using the minimal Lie-algebra
+perturbation:
+Tcw(ξ0 ⊕ δξ) ≈ exp(cδξ) Tcw(ξ0). (3)
+Linearizing the residual yields
+rj(ξ0 ⊕ δξ) ≈ rj(ξ0) + Jj δξ, (4)
+where Jj ∈ R2×6 is the pose Jacobian.
+Geometrically, Jj characterizes the linear sensitivity of the
+reprojection error to infinitesimal changes along each degree
+of freedom of the camera pose.
+Under the Gaussian noise assumption, the joint negative log-
+likelihood of all measurements can be written as a weighted
+sum of squared residuals:
+E(ξ) =
+X
+j
+1
+2 rj(ξ)⊤Σ−1
+r rj(ξ). (5)
+Substituting the linearized residual and retaining only
+second-order terms in δξ yields an approximate quadratic
+objective:
+E(δξ) ≈
+X
+j
+1
+2 (Jj δξ)⊤ Σ−1
+r (Jj δξ) (6)
+= 1
+2 δξ⊤
+
+X
+j
+J⊤
+j Σ−1
+r Jj
+
+ δξ. (7)
+Define the approximate Hessian matrix as
+H =
+X
+j
+J⊤
+j Σ−1
+r Jj. (8)
+For isotropic pixel noise Σr = σ2
+rI2, this simplifies to
+H =
+X
+j
+J⊤
+j Jj. (9)
+The matrix H ∈ R6×6 serves as the Gauss–Newton Hes-
+sian approximation and coincides with the Fisher information
+matrix of the pose estimation problem [27]. We therefore
+refer to H as the pose Fisher information matrix, or simply
+the information matrix. Its determinant and eigenstructure
+characterize the uncertainty of the estimated pose.
+B. Information-Driven Point Selection
+A point is regarded as information-rich if it contributes sub-
+stantially to reducing the pose uncertainty [24]. To formalize
+this notion, let the current active point set be S ⊆ C t, and
+denote its associated information matrix as
+H(S) = H0 +
+X
+j∈S
+J⊤
+j Jj, (10)
+where H0 = λI is the initial information matrix and λ > 0
+controls the regularization strength. For a candidate point i ∈
+Ct with i /∈ S, the updated information matrix becomes
+H(S ∪ {i}) = H(S) + J⊤
+i Ji. (11)
+Assuming the pose in the neighborhood of the linearization
+point follows a Gaussian distribution with covariance Σ(S) =
+H(S)−1, the differential entropy of a d-dimensional Gaussian
+is
+H(S) = 1
+2 log
+ 
+(2πe)d |Σ(S)|
+
+, (12)
+CONFIDENTIAL. Limited circulation. For review only
+IEEE RA-L submission 25-6014.1
+Preprint submitted to IEEE Robotics and Automation Letters as Submission for RA-L only
+Received December 29, 2025 20:43:47 Pacific Time
+
+--- PAGE 4 ---
+IEEE ROBOTICS AND AUTOMATION LETTERS 4
+where d = 6 for the pose perturbation and |Σ(S)| denotes the
+determinant.
+The information score of candidate point i is defined as the
+entropy reduction caused by adding i into S:
+∆Ei = 1
+2 log2
+|H(S ∪ {i})|
+|H(S)| . (13)
+Applying determinant identities and the Woodbury formula
+yields an efficient form:
+∆Ei = 1
+2 log2
+I2 + Ji H(S)−1J⊤
+i
+ , (14)
+whose unit is bits, reflecting the reduction in pose uncertainty
+contributed by point i. A larger value of ∆Ei corresponds to
+a larger entropy reduction and thus a more informative point
+[28], [29].
+To prevent selected points from clustering in highly textured
+areas, a spatial uniformity term is introduced. For each candi-
+date point with 2D location pi, define the local neighborhood
+B(pi, r) = {pm : ∥pm − pi∥2 ≤ r} , (15)
+where r > 0 is the neighborhood radius in pixels, and pm
+denotes the 2D location of a candidate point indexed by m. Let
+ni = |B(pi, r)| be the number of neighboring points within
+this radius, and define the local density as
+ρi = ni
+r2 . (16)
+The uniformity score is then
+Ui = 1
+1 + ρi
+. (17)
+Finally, each candidate point is assigned a selection score
+that combines its information score and uniformity score:
+Qi = (1 − α) ∆Ei + α Ui, (18)
+where α ∈ [0, 1] balances information content and spatial
+uniformity [25]. When α = 0 , the scheme becomes purely
+information-driven.
+We define a point budget κtop and iteratively construct
+a selected subset for pose estimation. To obtain this subset
+efficiently, we adopt a greedy forward-selection strategy and
+evaluate the scores with respect to the current set at each
+iteration. At iteration l, we select the next point that maximizes
+the score among the remaining candidates,
+i∗
+l = arg max
+i∈Ct, i /∈Sl
+Qi. (19)
+We then insert it into the set Sl+1 = Sl ∪ {i∗
+l } and update
+the information matrix as
+H(Sl+1) = H(Sl) + J⊤
+i∗
+l
+Ji∗
+l . (20)
+This process is repeated until the point budget κtop is
+reached. The resulting selected point set, denoted by St,
+provides strong Fisher information constraints on the pose
+while maintaining desirable spatial coverage.
+C. Information-Driven Keyframe Decision
+After obtaining the information matrix for each frame, we
+apply an information-driven keyframe decision to determine
+whether the current frame should be promoted to a keyframe.
+A keyframe serves as a reference that provides strong geomet-
+ric constraints for subsequent pose estimation. IDKD triggers
+keyframe insertion when the current frame yields a sufficiently
+large information change relative to the last keyframe, or when
+the information shows persistent degradation over time.
+Let the most recently selected keyframe be indexed by k,
+with its information matrix denoted by Hk. For the current
+frame t, the corresponding information matrix isHt, computed
+from the selected point set St. The information variation
+between the current frame and the last keyframe is defined
+as
+∆Et = 1
+2 log2
+|Ht|
+|Hk| . (21)
+If ∆Et > 0, the current frame provides stronger infor-
+mation than the keyframe. If ∆Et < 0, the current frame
+offers weaker constraints and may result from an unfavorable
+viewpoint or degraded texture [30].
+To account for the effective constraint availability after point
+selection, we introduce the selection ratio
+rt = nt
+Nt
+, r t ∈ [0, 1], (22)
+where nt is the number of selected informative points retained
+by IDPS in the current frame, and Nt is the number of
+candidate points in the same frame.
+Based on this selection ratio, an adaptive threshold is
+defined as
+τ = τ0
+ 
+1 − µ(1 − rt)
+
+, τ ∈ [τmin, τmax], (23)
+where τ0 > 0 is the base threshold for information variation,
+τ is the adaptively adjusted threshold, and µ ≥ 0 controls the
+strength of adaptation.
+Therefore, if
+|∆Et| > τ, (24)
+the information variation is considered sufficient to trigger
+keyframe insertion.
+To capture multi-frame degradation, we introduce the cu-
+mulative information drop
+Dt = η Dt−1 + min(0, ∆Et), 0 < η < 1, (25)
+where η is a forgetting factor that balances historical and
+current degradation. Let Θ > 0 be the threshold for cumulative
+degradation. If
+Dt < −Θ, (26)
+we consider the system to have experienced sustained geomet-
+ric degradation since the last keyframe, and a new keyframe
+is inserted.
+Thus, the final keyframe decision rule is
+|∆Et| > τ or Dt < −Θ,
+which provides an information-driven gate that augments the
+native ORB-SLAM3 keyframe insertion policy.
+CONFIDENTIAL. Limited circulation. For review only
+IEEE RA-L submission 25-6014.1
+Preprint submitted to IEEE Robotics and Automation Letters as Submission for RA-L only
+Received December 29, 2025 20:43:47 Pacific Time
+
+--- PAGE 5 ---
+IEEE ROBOTICS AND AUTOMATION LETTERS 5
+V. E XPERIMENTS
+A. Experimental Setup
+Baseline: UW-IDVO is integrated into the front-end of
+ORB-SLAM3. To ensure a fair comparison, the original
+monocular configuration of ORB-SLAM3 is used as the base-
+line in all experiments.
+Datasets: The Harbor sequences from the AQUALOC
+dataset are adopted as the primary benchmark. Following
+established practice, sequences 4 and 7 are excluded because
+no quantitative evaluation is possible [10], [12]. Sequences
+1 and 3 are used for parameter tuning, and independent
+validation is carried out on sequences 1, 2, 3, 5, and 6 under
+the same parameter settings. To further assess the generality of
+the proposed approach beyond underwater environments, UW-
+IDVO is also evaluated on the EuRoC MA V dataset, which
+represents a well-calibrated scenario with stable illumination.
+Metrics: Both trajectory accuracy and computational effi-
+ciency are evaluated. Trajectory accuracy is evaluated using
+Absolute Trajectory Error (ATE) and Relative Pose Error
+(RPE), both reported as root-mean-square (RMSE) values.
+Efficiency is assessed by the average tracking time per frame
+(Tracking time), the average local bundle adjustment time
+(Local BA time), the mean number of selected informative
+points (#Points), the total number of generated keyframes
+(#Keyframes), and the system memory usage (Memory).
+Platform: All experiments were conducted on Ubuntu
+20.04.6 LTS, and the proposed method was implemented in
+C++. The hardware platform was a laptop equipped with an
+Intel Core i5-13600KF CPU. To emulate resource-constrained
+UUV platforms, the SLAM system was restricted to 4 CPU
+cores and 8 GB of available memory during all experiments.
+Execution protocol: All experiments are executed using
+ROS bag online playback at the original recording rate, rather
+than offline frame-by-frame processing, in order to better
+replicate real UUV deployment conditions. This setup natu-
+rally introduces non-deterministic timing and occasional frame
+drops, making the evaluation more representative of practical
+usage scenarios. Each experiment is repeated 10 times, and
+the median of the results is reported to mitigate the effects of
+runtime variability.
+UW-IDVO is evaluated under four front-end configurations.
+BASE denotes the original ORB-SLAM3 monocular front-end.
+IDPS augments ORB-SLAM3 with the proposed IDPS module
+only. IDKD augments ORB-SLAM3 with the proposed IDKD
+module only. IDVO corresponds to the full UW-IDVO front-
+end, where both modules are enabled.
+B. Parameter Tuning
+To systematically evaluate the behavior of the UW-IDVO
+front-end under different parameter settings, we tune the
+hyperparameters using sequences 1 and 3 of the AQUALOC
+Harbor dataset. We first tune the hyperparameters under the
+IDPS configuration, and then refine them under the IDVO
+configuration. In what follows, we describe the selection
+process for two key hyperparameters: the point budget ( κtop)
+and the base threshold for information variation ( τ0).
+TABLE I
+INFORMATION -DRIVEN FRONT -END PARAMETERS USED IN UW-IDVO.
+Symbol Value Description
+κtop 95 Point budget
+α 0.12 Balance between information and uniformity
+r 7 Neighborhood radius in B(pi, r)
+λ 1.0 × 10−3 Regularization in initial information matrix H0
+τ0 2.2 Base threshold for information variation
+µ 0.25 Adaptation strength in the threshold
+τmin 0.1 Lower bound of adaptive threshold τ
+τmax 5.0 Upper bound of adaptive threshold τ
+η 0.95 Forgetting factor in cumulative drop Dt
+Θ 0 .5 Threshold for cumulative degradation
+Fig. 3 shows the effect of κtop on system performance. In
+practice, we observe that the system runs stably once κtop
+exceeds 60. Fig. 3(a) indicates that the trajectory accuracy
+changes only mildly over the tested range. Fig. 3(b) shows
+that the number of selected points per frame increases with
+κtop. Overall, with fewer points the system inserts keyframes
+more frequently, since weaker geometric constraints cause the
+front-end to update the reference frame more often. Fig. 3(c)
+illustrates that the runtimes of the tracking and local bun-
+dle adjustment (BA) threads increase with κtop. Fig. 3(d)
+shows that when the point budget is small, a large number
+of keyframes results in a larger map and higher memory
+usage. Increasing κtop reduces the number of keyframes and
+therefore lowers memory usage. In summary, a very large
+κtop increases the computational load of the front-end and
+local optimization, but does not significantly further improve
+pose accuracy. Balancing accuracy, stability, and efficiency,
+we choose κtop = 95 as a good trade-off: it lies on the
+accuracy plateau while incurring clearly lower runtime than
+larger settings. The higher memory usage in the low-budget
+regime is further alleviated in the next step by the information-
+driven keyframe decision strategy.
+Fig. 4 shows the effect of the base threshold for information
+variation τ0 on system performance. In practice, setting τ0
+no larger than 2.4 ensures stable operation. As shown in
+Fig. 4(a), both ATE and RPE remain low and stable within
+the tested range, indicating that the system maintains sufficient
+geometric constraints. Fig. 4(b) shows that the number of
+keyframes drops sharply as τ0 increases, while the number
+of selected points exhibits a mild downward trend. Fig. 4(c)
+indicates that the runtimes of the tracking and local BA threads
+decrease significantly as τ0 grows and become largely stable
+after τ0 = 1.8, with only a slow further reduction. Fig. 4(d)
+presents a similar trend for memory usage, where the benefit
+of increasing τ0 saturates around τ0 = 1 .8. Overall, Fig. 4
+suggests that both τ0 = 1.8 and τ0 = 2.2 provide a good trade-
+off between accuracy and efficiency. While τ0 = 1 .8 yields
+slightly better accuracy, τ0 = 2.2 achieves lower runtime and
+memory usage. Since this work targets a lightweight SLAM
+front-end for resource-constrained UUVs, we choose τ0 = 2.2
+as the default setting in the following experiments.
+The remaining parameters are tuned in the same manner,
+and the final settings of all information-driven parameters are
+summarized in Table I.
+CONFIDENTIAL. Limited circulation. For review only
+IEEE RA-L submission 25-6014.1
+Preprint submitted to IEEE Robotics and Automation Letters as Submission for RA-L only
+Received December 29, 2025 20:43:47 Pacific Time
+
+--- PAGE 6 ---
+IEEE ROBOTICS AND AUTOMATION LETTERS 6
+Fig. 3. Influence of the point budget κtop on system performance. (a) Trajectory accuracy. (b) Number of selected points and keyframes. (c) Runtime of
+tracking and local bundle adjustment (BA) threads. (d) Memory usage. The green star marker indicates the final choice, κtop = 95.
+Fig. 4. Influence of the base threshold for information variation τ0 on system performance. (a) Trajectory accuracy. (b) Number of selected points and
+keyframes. (c) Runtime of tracking and local bundle adjustment (BA) threads. (d) Memory usage. The green star marker indicates the final choice, τ0 = 2.2.
+Fig. 5. Visualization of the IDPS selection process on representative
+AQUALOC Harbor scenes. Magenta points indicate selected points, while
+cyan points show the remaining candidates. (a)–(b) Selection results with a
+large candidate points. (c)–(d) Boxed regions show sparsification of originally
+clustered candidate points. (e)–(f) Examples in sparse scenes with fewer
+candidate points.
+C. Evaluation on AQUALOC Harbor
+We evaluate UW-IDVO on the AQUALOC Harbor dataset,
+which exhibits typical underwater imaging degradation and is
+well suited for assessing both lightweight design and system
+stability. Results are reported under four front-end configura-
+tions: BASE, IDPS, IDKD, and IDVO.
+Fig. 5 provides an intuitive view of how IDPS controls
+the amount and the spatial distribution of constraints used for
+pose estimation. Instead of retaining all candidate points, IDPS
+selects a compact subset by ranking candidates with a selection
+score that combines an information score to favor strong
+geometric constraints and a uniformity score to discourage
+locally redundant constraints from the same textured region.
+This effect is most evident when many candidate points are
+available (Fig. 5(a)–(b)), where the selected points remain
+sparse and well distributed. The boxed regions in Fig. 5(c)–(d)
+further illustrate that dense candidate point clusters are thinned
+after selection, indicating that the uniformity score effectively
+regularizes the selection. In sparse underwater scenes, candi-
+date points can be unevenly distributed (Fig. 5(e)–(f)); in such
+cases, IDPS becomes conservative and retains most (or all)
+candidate points to avoid under-constrained pose estimation.
+Fig. 6 complements these observations at the sequence level:
+compared with the baseline, UW-IDVO produces trajecto-
+ries that closely overlap while yielding substantially fewer
+keyframes and reconstructed map points, suggesting that it
+mainly removes redundant constraints and leads to a more
+compact local optimization problem, which in turn benefits
+CONFIDENTIAL. Limited circulation. For review only
+IEEE RA-L submission 25-6014.1
+Preprint submitted to IEEE Robotics and Automation Letters as Submission for RA-L only
+Received December 29, 2025 20:43:47 Pacific Time
+
+--- PAGE 7 ---
+IEEE ROBOTICS AND AUTOMATION LETTERS 7
+Fig. 6. Qualitative comparison of reconstruction results: baseline (left) vs.
+UW-IDVO (right) on five AQUALOC Harbor sequences. Magenta curves
+denote trajectories, blue markers denote keyframes, and dark brown points
+denote reconstructed map points. UW-IDVO yields trajectories that closely
+overlap with the baseline while producing substantially fewer keyframes and
+map points.
+runtime and memory usage.
+Table II reports the quantitative results of the four front-end
+configurations on five Harbor sequences. Overall, IDPS tends
+to improve trajectory accuracy over BASE across sequences,
+suggesting that selecting a compact set of informative map
+point matches can strengthen the geometric constraints used
+for pose estimation. With IDKD alone, the keyframe count
+is reduced, leading to a smaller local BA workload. Since
+pose estimation still uses all matches, noisy or low-information
+observations can still dominate the optimization. As a result,
+IDKD does not consistently outperform BASE in accuracy,
+indicating that regulating keyframe growth alone is insufficient
+to suppress unstable measurements in degraded underwater
+imagery.
+From the efficiency and resource perspective, the benefit of
+combining the two strategies becomes clear. IDPS reduces the
+number of residual terms entering pose estimation, but may
+also trigger more frequent keyframe insertion under the native
+policy, increasing the keyframe count by 13.5% and memory
+usage by 38.2% on average. This trend is reflected in runtime
+as well, with IDPS increasing the per-frame tracking time by
+95.2% due to the additional overhead of scoring and selection.
+IDVO mitigates this effect by avoiding redundant keyframes,
+reducing the keyframe count by 59.9% and memory usage by
+36.3%, thereby bounding the local optimization window and
+limiting map growth. Consistent with this bounded window,
+IDVO reduces the average local BA time by 82.9% and lowers
+the tracking time by 20.6%. Consequently, IDVO provides
+the best overall balance between accuracy and efficiency
+on Harbor, preserving trajectory accuracy while substantially
+reducing per-frame computation and memory usage.
+TABLE II
+RESULTS ON THE AQUALOC H ARBOR SEQUENCES
+Metric Config Sequence Number Avg. ∆Avg.
+(%)No.1 No.2 No.3 No.5 No.6
+#Points
+BASE 240 283 361 334 334 310 –
+IDKD 130 148 178 140 133 146 −52.9
+IDPS 87 85 86 86 86 86 −72.3
+IDVO 79 83 84 80 80 81 −73.9
+#Keyframes
+BASE 393 733 457 687 437 541 –
+IDKD 25 289 157 204 132 161 −70.2
+IDPS 419 871 558 754 467 614 +13.5
+IDVO 53 401 194 266 173 217 −59.9
+ATE
+(m)
+BASE 0.113 0.187 0.169 0.039 0.035 0.108 –
+IDKD 0.049 0.184 0.184 0.118 0.039 0.115 +6.5
+IDPS 0.086 0.174 0.113 0.082 0.008 0.093 −13.9
+IDVO 0.047 0.182 0.162 0.011 0.025 0.085 −21.3
+RPE
+(m)
+BASE 0.010 0.024 0.034 0.006 0.006 0.016 –
+IDKD 0.012 0.025 0.037 0.010 0.009 0.019 +18.8
+IDPS 0.009 0.023 0.023 0.005 0.002 0.012 −25.0
+IDVO 0.012 0.025 0.034 0.001 0.003 0.015 −6.3
+Tracking time
+(ms)
+BASE 4.1 6.3 8.1 6.4 6.8 6.3 –
+IDKD 2.0 2.6 2.9 2.2 2.3 2.4 −61.9
+IDPS 8.9 12.2 14.9 13.1 12.7 12.3 +95.2
+IDVO 4.2 5.6 6.3 4.2 4.7 5.0 −20.6
+Local BA time
+(ms)
+BASE 44.3 116.5 140.6 76.3 86.2 92.8 –
+IDKD 8.1 16.9 18.2 10.6 10.9 13.0 −86.0
+IDPS 40.1 97.9 108.7 64.6 59.1 74.1 −20.2
+IDVO 10.0 24.5 25.5 10.4 9.4 15.9 −82.9
+Memory
+(MB)
+BASE 883 1120 978 1226 826 1007 –
+IDKD 565 623 581 604 565 588 −41.6
+IDPS 1477 1700 1378 1318 1086 1392 +38.2
+IDVO 609 722 659 621 591 641 −36.3
+D. Evaluation on EuRoC
+We further evaluate UW-IDVO on the EuRoC MH se-
+quences, which provide high-quality imagery with aggressive
+motion and rich texture, to assess generalization beyond un-
+derwater environments.
+Table III reports the quantitative results under BASE and
+IDVO. From the efficiency perspective, IDVO reduces the
+average local BA time by 83.4% and decreases memory usage
+by 26.7%, indicating a substantially smaller local optimization
+workload and a more compact map. In contrast, the per-
+frame tracking time changes only slightly ( +6.1%), because
+tracking on EuRoC is mainly dominated by feature extraction,
+matching, and local-map projection, while the proposed mech-
+anisms primarily reduce the constraints entering optimization
+and limit the growth of the local mapping window. Comput-
+ing information-based scores also introduces extra overhead,
+which can offset part of the tracking-side savings when the
+baseline tracking is already efficient.
+From the accuracy perspective, IDVO remains comparable
+to BASE, with only minor changes in the average ATE
+(+8.5%) and RPE ( +5.9%). This mild increase is expected
+in well-conditioned EuRoC sequences, because the images
+already contain abundant high-quality features and the base-
+line front-end is sufficiently constrained. In this case, further
+pruning and a more compact local optimization window may
+slightly reduce constraint redundancy and lead to a small loss
+in accuracy. By contrast, on AQUALOC Harbor, underwater
+degradation introduces many low SNR and unstable observa-
+tions, and IDVO is more beneficial because it suppresses noisy
+constraints and improves the effective quality of measure-
+ments. Overall, these results show that the proposed front-end
+improves efficiency while preserving near-baseline accuracy
+across both underwater and non-underwater datasets.
+CONFIDENTIAL. Limited circulation. For review only
+IEEE RA-L submission 25-6014.1
+Preprint submitted to IEEE Robotics and Automation Letters as Submission for RA-L only
+Received December 29, 2025 20:43:47 Pacific Time
+
+--- PAGE 8 ---
+IEEE ROBOTICS AND AUTOMATION LETTERS 8
+TABLE III
+RESULTS ON THE EUROC MH S EQUENCES
+Metric Config Sequence Avg. ∆Avg.
+(%)MH01 MH02 MH03 MH04 MH05
+ATE
+(m)
+BASE 0.717 1.337 0.652 0.131 2.572 1.082 –
+IDVO 0.753 1.732 0.459 0.140 2.784 1.174 +8.5
+RPE
+(m)
+BASE 0.046 0.099 0.114 0.011 0.070 0.068 –
+IDVO 0.048 0.131 0.084 0.023 0.074 0.072 +5.9
+Tracking time
+(ms)
+BASE 5.9 5.3 4.6 4.2 4.5 4.9 –
+IDVO 5.2 5.5 5.7 4.8 4.7 5.2 +6.1
+Local BA time
+(ms)
+BASE 174.3 168.6 155.7 93.3 108.2 140.0 –
+IDVO 24.6 33.2 28.8 14.5 15.4 23.3 −83.4
+Memory
+(MB)
+BASE 940 878 821 782 882 860 –
+IDVO 632 622 637 622 637 630 −26.7
+VI. C ONCLUSION
+In this paper, we presented UW-IDVO, an underwater
+information-driven visual odometry front-end tailored for
+resource-constrained UUVs. By integrating IDPS and IDKD to
+select informative map point constraints and regulate keyframe
+growth, UW-IDVO leads to a smaller and bounded local opti-
+mization problem, improving runtime and memory efficiency
+while maintaining reliable pose accuracy.
+UW-IDVO is integrated into the monocular ORB-SLAM3
+front-end and evaluated on the AQUALOC Harbor and Eu-
+RoC MH datasets. On Harbor, UW-IDVO preserves trajectory
+accuracy while reducing the average per-frame tracking and
+local BA time by about 83% and lowering map memory usage
+by about 36% compared with the baseline. On EuRoC MH,
+UW-IDVO continues to substantially reduce the local BA time
+by about 83% and decreases memory usage by about 27%,
+while maintaining stable trajectories with only mild changes
+in absolute accuracy.
+UW-IDVO offers an approach to a lightweight visual odom-
+etry front-end. Future work will extend this information-driven
+design toward multi-sensor SLAM and adaptive computation
+allocation.
+ACKNOWLEDGMENTS
+This work was supported by the National Key Re-
+search and Development Program of China under Grant No.
+2024YFF0619302 and Zhejiang Provincial Natural Science
+Foundation of China under Grant No. LMS25E090003.
+REFERENCES
+[1] X. Wang, X. Fan, Y . Liu, Y . Xin, and P. Shi, “EUM-SLAM: An
+enhancing underwater monocular visual SLAM with deep-learning-
+based optical flow estimation,” IEEE Trans. Instrum. Meas. , vol. 74,
+pp. 1–11, 2025.
+[2] S. Ding, T. Zhang, M. Lei, H. Chai, and F. Jia, “Robust visual-based
+localization and mapping for underwater vehicles: A survey,” Ocean
+Eng., vol. 312, p. 119274, 2024.
+[3] T. Qin, P. Li, and S. Shen, “VINS-mono: A robust and versatile
+monocular visual-inertial state estimator,” IEEE Trans. Robot. , vol. 34,
+no. 4, pp. 1004–1020, 2018.
+[4] C. Campos, R. Elvira, J. J. G. Rodr ´ıguez, J. M. M. Montiel, and
+J. D. Tard ´os, “Orb-slam3: An accurate open-source library for visual,
+visual–inertial, and multimap slam,” IEEE Trans. Robot. , vol. 37, no. 6,
+pp. 1874–1890, 2021.
+[5] F. Hidalgo, C. Kahlefendt, and T. Br ¨aunl, “Monocular ORB-SLAM
+application in underwater scenarios,” in Proc. IEEE OCEANS , 2018,
+pp. 1–4.
+[6] S. Zhang, S. Zhao, D. An, J. Liu, H. Wang, Y . Feng, D. Li, and R. Zhao,
+“Visual slam for underwater vehicles: A survey,” Comput. Sci. Rev. ,
+vol. 46, p. 100510, 2022.
+[7] G. Chen, G. Du, C. Yang, Y . Xu, C. Wu, H. Hu, F. Dong, and J. Zeng,
+“An underwater visual slam system with adaptive image enhancement,”
+Ocean Eng. , vol. 326, p. 120896, 2025.
+[8] M. J. Islam, Y . Xia, and J. Sattar, “Fast underwater image enhancement
+for improved visual perception,” IEEE Robot. Autom. Lett. , vol. 5, no. 2,
+pp. 3227–3234, 2020.
+[9] Y . Liu, H. Wu, W. Zhang, C. Wang, Y . Wei, and M. Ren, “Low-light
+enhancement visual slam via deep deformable power curve estimation,”
+IEEE Sens. J. , vol. 25, no. 10, pp. 17 404–17 412, 2025.
+[10] M. Ferrera, J. Moras, P. Trouv ´e-Peloux, V . Creuze, and D. D ´egez,
+“The aqualoc dataset: Towards real-time underwater localization from a
+visual-inertial-pressure acquisition system,” 2018.
+[11] M. Burri, J. Nikolic, P. Gohl, T. Schneider, J. Rehder, S. Omari,
+M. Achtelik, and R. Siegwart, “The euroc micro aerial vehicle datasets,”
+Int. J. Robot. Res. , vol. 35, 01 2016.
+[12] C. Hu, S. Zhu, Y . Liang, Z. Mu, and W. Song, “Visual-pressure fusion
+for underwater robot localization with online initialization,” IEEE Robot.
+Autom. Lett. , vol. 6, no. 4, pp. 8426–8433, 2021.
+[13] S. Rahman, A. Quattrini Li, and I. Rekleitis, “SVIn2: A multi-sensor
+fusion-based underwater SLAM system,” Int. J. Robot. Res. , vol. 41,
+no. 11, pp. 1022–1042, 2022.
+[14] B. Zhang, S. Liu, D. Ji, T. Wang, S. Zhou, Z. Wang, X. Qi, and
+W. Xu, “Mvins: A magnetism&vision aided inertial navigation system
+for autonomous underwater vehicles,” IEEE Robot. Autom. Lett. , vol. 10,
+no. 3, pp. 2239–2246, 2025.
+[15] S. Xu, K. Zhang, and S. Wang, “AQUA-SLAM: Tightly-coupled un-
+derwater acoustic-visual-inertial SLAM with sensor calibration,” IEEE
+Trans. Robot., pp. 1–20, 2025.
+[16] S. Pan, Z. Hong, Z. Hu, X. Xu, W. Lu, and L. Hu, “Russo: Robust
+underwater slam with sonar optimization against visual degradation,”
+IEEE-ASME Trans. Mechatron. , pp. 1–12, 2025.
+[17] B. Li, Z. Chen, L. Lu, P. Qi, L. Zhang, Q. Ma, H. Hu, J. Zhai, and
+X. Li, “Cascaded frameworks in underwater optical image restoration,”
+Inf. Fusion , vol. 117, p. 102809, 2025.
+[18] A. Fontan, J. Civera, and M. Milford, “Adaptive outlier thresholding
+for bundle adjustment in visual slam,” in Proc. IEEE Int. Conf. Robot.
+Automat., 2024, pp. 3969–3976.
+[19] R. Liu, S. Fan, W. Wang, and Y . Yang, “Underwater visual SLAM with
+depth uncertainty and medium modeling,” Proc. IEEE/CVF Int. Conf.
+Comput. Vis., 2025.
+[20] Z. Xin, Z. Wang, Z. Yu, and B. Zheng, “ULL-SLAM: underwater low-
+light enhancement for the front-end of visual SLAM,” Front. Mar . Sci.,
+vol. 10, p. 1133881, 2023.
+[21] H. Wu, Y . Chen, Q. Yang, B. Yan, and X. Yang, “A review of underwater
+robot localization in confined spaces,” J. Mar . Sci. Eng., vol. 12, no. 3,
+p. 428, 2024.
+[22] V . Ila, J. M. Porta, and J. Andrade-Cetto, “Information-based compact
+pose slam,” IEEE Trans. Robot. , vol. 26, no. 1, pp. 78–93, 2010.
+[23] H. Kretzschmar and C. Stachniss, “Information-theoretic compression
+of pose graphs for laser-based slam,” Int. J. Robot. Res. , vol. 31, no. 11,
+p. 1219–1230, Sep. 2012.
+[24] A. Font ´an, J. Civera, and R. Triebel, “Information-driven direct RGB-d
+odometry,” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. ,
+2020, pp. 4928–4936.
+[25] A. Fontan, R. Giubilato, L. O. Maza, J. Civera, and R. Triebel, “SID-
+SLAM: Semi-direct information-driven RGB-d SLAM,” IEEE Robot.
+Autom. Lett. , vol. 8, no. 10, pp. 6387–6394, 2023.
+[26] X. Wang, X. Fan, P. Shi, J. Ni, and Z. Zhou, “An overview of key slam
+technologies for underwater scenes,” Remote Sensing , vol. 15, no. 10,
+2023.
+[27] A. Davison, “Active search for real-time vision,” in Proc. IEEE/CVF
+Int. Conf. Comput. Vis. , vol. 1, 2005, pp. 66–73 V ol. 1.
+[28] H. Strasdat, J. M. M. Montiel, and A. J. Davison, “Real-time monocular
+slam: Why filter?” in Proc. IEEE Int. Conf. Robot. Automat. , 2010, pp.
+2657–2664.
+[29] P. Schmuck and M. Chli, “On the redundancy detection in keyframe-
+based slam,” in Proc. IEEE Int. Conf. 3D Vis. (3DV) , 2019, pp. 594–603.
+[30] C. Kerl, J. Sturm, and D. Cremers, “Dense visual slam for rgb-d
+cameras,” in Proc. IEEE/RSJ Int. Conf. Intell. Robots Syst. , 2013, pp.
+2100–2106.
+CONFIDENTIAL. Limited circulation. For review only
+IEEE RA-L submission 25-6014.1
+Preprint submitted to IEEE Robotics and Automation Letters as Submission for RA-L only
+Received December 29, 2025 20:43:47 Pacific Time

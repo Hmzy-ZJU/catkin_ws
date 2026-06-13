@@ -96,13 +96,13 @@ Viewer.imageViewScale: 1.0
 
 # Information-driven point selection and keyframe decision
 InfoSelector.Enable: 1
-InfoSelector.TopK: 300
+InfoSelector.TopK: 95
 InfoSelector.UseUniform: 1
 InfoSelector.w_uniform: 0.12
 InfoSelector.MinPxDist: 7
 InfoSelector.LambdaInit: 1.0e-3
 InfoKF.Use: 1
-InfoKF.AllowBitsDrop: 1.8
+InfoKF.AllowBitsDrop: 2.2
 InfoKF.LambdaMean: 1.0e-3
 InfoKF.Dyn.Alpha: 0.25
 InfoKF.Dyn.Beta: 0.0

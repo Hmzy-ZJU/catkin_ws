@@ -121,24 +121,16 @@ base_config_for_case() {
   local dataset="$1" sensor="$2" run_dir="$3" seq="$4"
   case "$dataset/$sensor" in
     harbor/mono)
-      printf '%s\n' "$WS/src/orb_slam3_ros/config/Monocular/Aqualoc_harbor.yaml"
+      printf '%s\n' "$HARBOR_MONO_CONFIG"
       ;;
     euroc/mono)
-      printf '%s\n' "$WS/src/orb_slam3_ros/config/Monocular/EuRoC.yaml"
+      printf '%s\n' "$EUROC_MONO_CONFIG"
       ;;
     euroc/stereo)
-      printf '%s\n' "$WS/src/orb_slam3_ros/config/Stereo/EuRoC.yaml"
+      printf '%s\n' "$EUROC_STEREO_CONFIG"
       ;;
     aquaticvision/mono|aquaticvision/stereo)
-      local cache="$run_dir/aquaticvision_config_cache"
-      local mono_cfg="$run_dir/aquaticvision_mono_base.yaml"
-      local stereo_cfg="$run_dir/aquaticvision_stereo_base.yaml"
-      local mi_cfg="$run_dir/aquaticvision_mono_inertial_base.yaml"
-      local si_cfg="$run_dir/aquaticvision_stereo_inertial_base.yaml"
-      local baseline_arg=""
-      if [ -n "${AQUATIC_BASELINE:-}" ]; then baseline_arg="--baseline $AQUATIC_BASELINE"; fi
-      python3 "$PREPARE_AQUATIC_TOOL" --root "$AQUATIC_ROOT" --sequence "$seq" --out "$cache" --mono-config "$mono_cfg" --stereo-config "$stereo_cfg" --mono-inertial-config "$mi_cfg" --stereo-inertial-config "$si_cfg" --max-frames 1 $baseline_arg > "$run_dir/prepare_config_stdout.txt" 2>&1
-      if [ "$sensor" = "mono" ]; then printf '%s\n' "$mono_cfg"; else printf '%s\n' "$stereo_cfg"; fi
+      if [ "$sensor" = "mono" ]; then printf '%s\n' "$AQUATIC_MONO_CONFIG"; else printf '%s\n' "$AQUATIC_STEREO_CONFIG"; fi
       ;;
     *)
       return 1

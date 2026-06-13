@@ -141,19 +141,6 @@ AdaptiveLogPath: "${adaptive_csv}"
 EOF
 }
 
-prepare_configs() {
-  local seq="$1" run_dir="$2"
-  local cache="$run_dir/aquaticvision_config_cache"
-  local baseline_arg=""
-  if [ -n "${AQUATIC_BASELINE:-}" ]; then baseline_arg="--baseline $AQUATIC_BASELINE"; fi
-  python3 "$PREPARE_AQUATIC_TOOL" --root "$AQUATIC_ROOT" --sequence "$seq" --out "$cache" \
-    --mono-config "$run_dir/aquaticvision_mono_base.yaml" \
-    --stereo-config "$run_dir/aquaticvision_stereo_base.yaml" \
-    --mono-inertial-config "$run_dir/aquaticvision_mono_inertial_base.yaml" \
-    --stereo-inertial-config "$run_dir/aquaticvision_stereo_inertial_base.yaml" \
-    --max-frames 1 $baseline_arg > "$run_dir/prepare_config_stdout.txt" 2>&1
-}
-
 make_launch() {
   local launch_file="$1" sensor="$2" cfg="$3"
   if [ "$sensor" = "mono" ]; then
@@ -270,8 +257,11 @@ run_case() {
   bag="$(bag_for_sequence "$seq_dir")"
   [ -f "$bag" ] || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "missing_bag"; return 0; }
 
-  prepare_configs "$seq" "$run_dir"
-  if [ "$sensor" = "mono" ]; then base_cfg="$run_dir/aquaticvision_mono_base.yaml"; else base_cfg="$run_dir/aquaticvision_stereo_base.yaml"; fi
+  if [ "$sensor" = "mono" ]; then base_cfg="$AQUATIC_MONO_CONFIG"; else base_cfg="$AQUATIC_STEREO_CONFIG"; fi
+  if [ ! -f "$base_cfg" ]; then
+    write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "missing_base_config"
+    return 0
+  fi
   adaptive_csv="$run_dir/adaptive_frames.csv"
   cfg="$run_dir/settings.yaml"
   apply_mode_to_config "$base_cfg" "$cfg" "$mode" "$adaptive_csv"

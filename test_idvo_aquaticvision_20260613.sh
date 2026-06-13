@@ -10,7 +10,7 @@ WS="${WS:-$HOME/catkin_ws}"
 AQUATIC_ROOT="${AQUATIC_ROOT:-$WS/dataset_AquaticVision}"
 RUN_TAG="${RUN_TAG:-uwidvo_aquaticvision_$(date +%Y%m%d_%H%M%S)}"
 SEQUENCES="${SEQUENCES:-01 02 03 04 05 06 07 08 09}"
-SENSORS="${SENSORS:-mono stereo mono-inertial stereo-inertial}"
+SENSORS="${SENSORS:-mono stereo}"
 if [ -n "${UWIDVO_MODES:-}" ]; then
   MODES="$UWIDVO_MODES"
 elif [ -n "${IDVO_MODES:-}" ]; then
@@ -31,6 +31,8 @@ COPY_IMAGES="${COPY_IMAGES:-0}"
 
 VOCAB="${VOCAB:-$WS/src/orb_slam3_ros/orb_slam3/Vocabulary/ORBvoc.txt.bin}"
 PREPARE_TOOL="$WS/tools/prepare_aquaticvision_euroc.py"
+AQUATIC_MONO_CONFIG="${AQUATIC_MONO_CONFIG:-$WS/paper_experiments/exp3_aquaticvision_generalization/run_config/aquaticvision_mono.yaml}"
+AQUATIC_STEREO_CONFIG="${AQUATIC_STEREO_CONFIG:-$WS/paper_experiments/exp3_aquaticvision_generalization/run_config/aquaticvision_stereo.yaml}"
 RESULT_ROOT="$AQUATIC_ROOT/results/uwidvo_aquaticvision_${RUN_TAG}"
 CACHE_ROOT="${CACHE_ROOT:-$WS/offline_aquaticvision_cache}"
 SUMMARY="$RESULT_ROOT/summary_aquaticvision_uwidvo.csv"
@@ -121,7 +123,7 @@ extract_metric() {
 }
 
 prepare_sequence() {
-  local seq="$1" sensor="$2" cache="$3" mono_cfg="$4" stereo_cfg="$5" mono_inertial_cfg="$6" stereo_inertial_cfg="$7"
+  local seq="$1" sensor="$2" cache="$3"
   local copy_arg=""
   local baseline_arg=""
   local imu_arg=""
@@ -135,10 +137,6 @@ prepare_sequence() {
     --root "$AQUATIC_ROOT" \
     --sequence "$seq" \
     --out "$cache" \
-    --mono-config "$mono_cfg" \
-    --stereo-config "$stereo_cfg" \
-    --mono-inertial-config "$mono_inertial_cfg" \
-    --stereo-inertial-config "$stereo_inertial_cfg" \
     --fps "$FPS" \
     --max-frames "$MAX_FRAMES" \
     --topk "$TOPK" \
@@ -270,30 +268,34 @@ PY
 
 run_one() {
   local seq="$1" sensor="$2" mode="$3" run_id="$4"
-  local seq_tag cache result_dir mono_cfg stereo_cfg mono_inertial_cfg stereo_inertial_cfg cfg cfg_base exe_name exe tag traj gt start_time end_time elapsed exit_code
+  local seq_tag cache result_dir cfg cfg_base exe_name exe tag traj gt start_time end_time elapsed exit_code
   seq_tag="$(printf '%s' "$seq" | tr ' /' '__')"
   cache="$CACHE_ROOT/$seq_tag"
   result_dir="$RESULT_ROOT/$mode/$sensor/$seq_tag/run_${run_id}"
-  mono_cfg="$result_dir/aquaticvision_mono_base.yaml"
-  stereo_cfg="$result_dir/aquaticvision_stereo_base.yaml"
-  mono_inertial_cfg="$result_dir/aquaticvision_mono_inertial_base.yaml"
-  stereo_inertial_cfg="$result_dir/aquaticvision_stereo_inertial_base.yaml"
   mkdir -p "$result_dir"
 
+  case "$sensor" in
+    mono|stereo) ;;
+    mono-inertial|stereo-inertial) write_row "aquaticvision" "$seq" "$sensor" "$mode" "$run_id" "UNSUPPORTED" "0" "0" "0" "0" "0.000" "$result_dir" "" "" "" "" "" "" "aquaticvision_imu_modes_not_in_current_paper_test"; return 0 ;;
+    *) write_row "aquaticvision" "$seq" "$sensor" "$mode" "$run_id" "UNSUPPORTED" "0" "0" "0" "0" "0.000" "$result_dir" "" "" "" "" "" "" "unsupported_sensor"; return 0 ;;
+  esac
+
   log "[PREPARE] sequence=$seq sensor=$sensor cache=$cache"
-  if ! prepare_sequence "$seq" "$sensor" "$cache" "$mono_cfg" "$stereo_cfg" "$mono_inertial_cfg" "$stereo_inertial_cfg" > "$result_dir/prepare_stdout.txt" 2>&1; then
+  if ! prepare_sequence "$seq" "$sensor" "$cache" > "$result_dir/prepare_stdout.txt" 2>&1; then
     log "[ERROR] prepare failed sequence=$seq sensor=$sensor"
     write_row "aquaticvision" "$seq" "$sensor" "$mode" "$run_id" "PREPARE_FAIL" "0" "0" "0" "0" "0.000" "$result_dir" "" "" "" "" "" "" "prepare_failed"
     return 0
   fi
 
   case "$sensor" in
-    mono) cfg_base="$mono_cfg" ;;
-    stereo) cfg_base="$stereo_cfg" ;;
-    mono-inertial) cfg_base="$mono_inertial_cfg" ;;
-    stereo-inertial) cfg_base="$stereo_inertial_cfg" ;;
-    *) write_row "aquaticvision" "$seq" "$sensor" "$mode" "$run_id" "UNSUPPORTED" "0" "0" "0" "0" "0.000" "$result_dir" "" "" "" "" "" "" "unsupported_sensor"; return 0 ;;
+    mono) cfg_base="$AQUATIC_MONO_CONFIG" ;;
+    stereo) cfg_base="$AQUATIC_STEREO_CONFIG" ;;
   esac
+  if [ ! -f "$cfg_base" ]; then
+    log "[ERROR] missing base config: $cfg_base"
+    write_row "aquaticvision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "0" "0" "0" "0" "0.000" "$result_dir" "$cfg_base" "" "$cache/gt.tum" "" "" "" "missing_base_config"
+    return 0
+  fi
   cfg="$result_dir/aquaticvision_${sensor}_${mode}.yaml"
   apply_mode_to_config "$cfg_base" "$cfg" "$mode"
 
@@ -373,6 +375,8 @@ main() {
   log "MAX_FRAMES=$MAX_FRAMES"
   log "FPS=$FPS"
   log "TOPK=$TOPK"
+  log "AQUATIC_MONO_CONFIG=$AQUATIC_MONO_CONFIG"
+  log "AQUATIC_STEREO_CONFIG=$AQUATIC_STEREO_CONFIG"
   log "RESULT_ROOT=$RESULT_ROOT"
 
   if [ ! -f "$PREPARE_TOOL" ]; then

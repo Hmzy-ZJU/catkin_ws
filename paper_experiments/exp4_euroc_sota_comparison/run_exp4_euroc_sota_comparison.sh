@@ -493,8 +493,15 @@ main() {
   log "Exp.4 finished"
   log "Summary: $SUMMARY"
   log "Raw results: $RESULT_ROOT"
-  log "Evo plot files:"
-  find "$RESULT_ROOT" -type f \( -name "evo_ape_plot_xy.pdf" -o -name "evo_rpe_plot_xy.pdf" -o -name "evo_traj_plot_xy.pdf" \) | sort | tee "$RESULT_ROOT/evo_plots.txt" | tee -a "$MASTER_LOG"
+  find "$RESULT_ROOT" -type f \( -name "evo_ape_plot_xy.pdf" -o -name "evo_rpe_plot_xy.pdf" -o -name "evo_traj_plot_xy.pdf" \) | sort > "$RESULT_ROOT/evo_plots.txt"
+  log "Evo plot list: $RESULT_ROOT/evo_plots.txt"
+  log "Evo plot count: $(wc -l < "$RESULT_ROOT/evo_plots.txt")"
+  if python3 "$EXP_DIR/summarize_exp4_results.py" "$SUMMARY" --out-dir "$EXP_DIR/processed_results" > "$RESULT_ROOT/summary_tables_stdout.txt" 2>&1; then
+    log "Aggregate summaries:"
+    cat "$RESULT_ROOT/summary_tables_stdout.txt" | tee -a "$MASTER_LOG"
+  else
+    log "[WARN] failed to generate aggregate summaries; see $RESULT_ROOT/summary_tables_stdout.txt"
+  fi
 }
 
 main "$@"
