@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Exp. 4: EuRoC MH01-MH05 stereo-inertial offline SOTA comparison.
+# Exp. 4: EuRoC MH01-MH05 mono-inertial/stereo-inertial offline SOTA comparison.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXP_DIR="$SCRIPT_DIR"
@@ -71,6 +71,22 @@ find_exe() {
     if [ -x "$p" ]; then printf '%s\n' "$p"; return 0; fi
   done
   return 1
+}
+
+base_config_for_sensor() {
+  case "$1" in
+    mono-inertial) printf '%s\n' "$MONO_INERTIAL_CONFIG" ;;
+    stereo-inertial) printf '%s\n' "$STEREO_INERTIAL_CONFIG" ;;
+    *) return 1 ;;
+  esac
+}
+
+exe_name_for_sensor() {
+  case "$1" in
+    mono-inertial) printf '%s\n' aidvo_offline_mono_inertial_euroc ;;
+    stereo-inertial) printf '%s\n' aidvo_offline_stereo_inertial_euroc ;;
+    *) return 1 ;;
+  esac
 }
 
 count_lines() {
@@ -397,17 +413,17 @@ PY
 }
 
 run_case() {
-  local seq="$1" mode="$2" run_id="$3"
+  local seq="$1" sensor="$2" mode="$3" run_id="$4"
   local bag="$EUROC_ROOT/data/${seq}.bag"
   local cache="$EUROC_CACHE_ROOT/${seq}"
-  local run_dir="$RESULT_ROOT/EuRoC/${seq}/${SENSOR}/${mode}/run_${run_id}"
+  local run_dir="$RESULT_ROOT/EuRoC/${seq}/${sensor}/${mode}/run_${run_id}"
   local adaptive_csv="$run_dir/adaptive_frames.csv"
   local cfg="$run_dir/settings.yaml"
-  local exe tag traj input_frames traj_poses completeness status notes start_time end_time elapsed exit_code gt gt_tum ate rpe
+  local exe exe_name base_config tag traj input_frames traj_poses completeness status notes start_time end_time elapsed exit_code gt gt_tum ate rpe
 
   mkdir -p "$run_dir"
   if [ ! -f "$bag" ]; then
-    write_row "exp4" "EuRoC" "$seq" "$SENSOR" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "" "$run_dir" "missing_bag"
+    write_row "exp4" "EuRoC" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "" "$run_dir" "missing_bag"
     return 0
   fi
 
@@ -416,16 +432,24 @@ run_case() {
     python3 "$EXTRACT_TOOL" --dataset euroc --bag "$bag" --out "$cache" --start "$BAG_START" --duration "$BAG_DURATION" --max-frames "$MAX_FRAMES" > "$run_dir/extract_stdout.txt" 2>&1
   fi
 
-  apply_mode_to_config "$BASE_CONFIG" "$cfg" "$mode" "$adaptive_csv"
-  exe="$(find_exe aidvo_offline_stereo_inertial_euroc)" || {
-    write_row "exp4" "EuRoC" "$seq" "$SENSOR" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "" "$run_dir" "missing_executable"
+  base_config="$(base_config_for_sensor "$sensor")" || {
+    write_row "exp4" "EuRoC" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "" "$run_dir" "unsupported_sensor"
+    return 0
+  }
+  apply_mode_to_config "$base_config" "$cfg" "$mode" "$adaptive_csv"
+  exe_name="$(exe_name_for_sensor "$sensor")" || {
+    write_row "exp4" "EuRoC" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "" "$run_dir" "unsupported_sensor"
+    return 0
+  }
+  exe="$(find_exe "$exe_name")" || {
+    write_row "exp4" "EuRoC" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "" "$run_dir" "missing_executable:$exe_name"
     return 0
   }
 
-  tag="exp4_${seq}_${SENSOR}_${mode}_r${run_id}"
+  tag="exp4_${seq}_${sensor}_${mode}_r${run_id}"
   traj="$run_dir/f_${tag}.txt"
 
-  log "[RUN] seq=$seq sensor=$SENSOR mode=$mode run=$run_id"
+  log "[RUN] seq=$seq sensor=$sensor mode=$mode run=$run_id"
   start_time="$(date +%s)"
   set +e
   (
@@ -490,7 +514,7 @@ PY
     notes="${notes};evo_missing_metrics:${evo_note}"
   fi
 
-  write_row "exp4" "EuRoC" "$seq" "$SENSOR" "$mode" "$run_id" "$status" "$ate" "$rpe" "$completeness" "$traj_poses" "$input_frames" "$elapsed" "$cfg" "$traj" "$run_dir" "$notes"
+  write_row "exp4" "EuRoC" "$seq" "$sensor" "$mode" "$run_id" "$status" "$ate" "$rpe" "$completeness" "$traj_poses" "$input_frames" "$elapsed" "$cfg" "$traj" "$run_dir" "$notes"
 }
 
 main() {
@@ -501,7 +525,7 @@ main() {
   log "EUROC_GT_ROOT=${EUROC_GT_ROOT:-}"
   log "RUN_TAG=$RUN_TAG"
   log "SEQUENCES=$SEQUENCES"
-  log "SENSOR=$SENSOR"
+  log "SENSORS=$SENSORS"
   log "UWIDVO_MODES=$UWIDVO_MODES"
   log "RUNS_PER_CASE=$RUNS_PER_CASE"
 
@@ -509,12 +533,14 @@ main() {
   if [ "$DO_BUILD" = "1" ]; then catkin build --cmake-args -DORB3_USE_INFOSEL=ON; fi
   if [ -f "$WS/devel/setup.bash" ]; then source "$WS/devel/setup.bash"; fi
 
-  local seq raw_mode mode run_id
+  local seq sensor raw_mode mode run_id
   for seq in $SEQUENCES; do
-    for raw_mode in $(printf '%s' "$UWIDVO_MODES" | tr ',' ' '); do
-      mode="$(normalize_mode "$raw_mode")" || { log "[WARN] skip invalid mode=$raw_mode"; continue; }
-      for run_id in $(seq 1 "$RUNS_PER_CASE"); do
-        run_case "$seq" "$mode" "$run_id"
+    for sensor in $SENSORS; do
+      for raw_mode in $(printf '%s' "$UWIDVO_MODES" | tr ',' ' '); do
+        mode="$(normalize_mode "$raw_mode")" || { log "[WARN] skip invalid mode=$raw_mode"; continue; }
+        for run_id in $(seq 1 "$RUNS_PER_CASE"); do
+          run_case "$seq" "$sensor" "$mode" "$run_id"
+        done
       done
     done
   done
@@ -530,6 +556,12 @@ main() {
     cat "$RESULT_ROOT/summary_tables_stdout.txt" | tee -a "$MASTER_LOG"
   else
     log "[WARN] failed to generate aggregate summaries; see $RESULT_ROOT/summary_tables_stdout.txt"
+  fi
+  if python3 "$EXP_DIR/build_exp4_paper_table.py" "$SUMMARY" --out-dir "$EXP_DIR/processed_results" > "$RESULT_ROOT/paper_table_stdout.txt" 2>&1; then
+    log "Paper SOTA table:"
+    cat "$RESULT_ROOT/paper_table_stdout.txt" | tee -a "$MASTER_LOG"
+  else
+    log "[WARN] failed to generate paper SOTA table; see $RESULT_ROOT/paper_table_stdout.txt"
   fi
 }
 
