@@ -3753,7 +3753,6 @@ bool Tracking::TrackLocalMap()
     // 触发条件：使用 InfoSelector 且 当前帧有位姿 且 跟踪状态为 OK
     // Visual modes are ready immediately; inertial modes wait for IMU bootstrap.
     if (mUseInfoSelector && mCurrentFrame.HasPose() && mState == OK &&
-        IsAdaptiveExecutionEnabled() &&
         IsInfoModuleRuntimeReady())
     {
         // --------- [稳健性] 每帧先清空，避免上一帧残留导致可视化“闪烁/假象” ---------
@@ -4251,7 +4250,6 @@ bool Tracking::NeedNewKeyFrame()
         }
         InfoKFParams frameInfoKFParams = GetCurrentInfoKFParams();
         if(frameInfoKFParams.use && mCurrentFrame.HasPose() &&
-           IsAdaptiveExecutionEnabled() &&
            IsInfoModuleRuntimeReady())
         {
             std::vector<int> validIndices;
@@ -4340,7 +4338,6 @@ void Tracking::CreateNewKeyFrame()
     // Visual modes are ready immediately; inertial modes wait for IMU bootstrap.
     InfoKFParams frameInfoKFParams = GetCurrentInfoKFParams();
     if(frameInfoKFParams.use && mCurrentFrame.HasPose() &&
-       IsAdaptiveExecutionEnabled() &&
        IsInfoModuleRuntimeReady())
     {
         std::vector<int> validIndices;
