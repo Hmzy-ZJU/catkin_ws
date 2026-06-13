@@ -319,28 +319,56 @@ if len(gt) < 3 or len(est) < 3:
     raise SystemExit(f"not enough poses for evo matching: gt={len(gt)}, est={len(est)}")
 
 gt_times = [r[0] for r in gt]
-offset = gt_times[0] - est[0][0]
 window_count = min(20, len(gt_times) - 1)
 window_span = gt_times[window_count] - gt_times[0] if window_count > 0 else 0.05
-max_dt = max(0.05, 2.5 * window_span / max(1, window_count))
-matches = []
-for est_t, est_parts in est:
-    target = est_t + offset
-    j = bisect.bisect_left(gt_times, target)
-    cand = []
-    if j < len(gt):
-        cand.append(j)
-    if j > 0:
-        cand.append(j - 1)
-    if not cand:
-        continue
-    best = min(cand, key=lambda i: abs(gt_times[i] - target))
-    dt = abs(gt_times[best] - target)
-    if dt <= max_dt:
-        matches.append((est_t, gt[best][1], est_parts, dt))
+max_dt = max(0.01, min(0.05, 2.5 * window_span / max(1, window_count)))
+min_good_matches = max(3, int(0.5 * len(est)))
+
+def match_with_offset(offset):
+    out = []
+    for est_t, est_parts in est:
+        target = est_t + offset
+        j = bisect.bisect_left(gt_times, target)
+        cand = []
+        if j < len(gt):
+            cand.append(j)
+        if j > 0:
+            cand.append(j - 1)
+        if not cand:
+            continue
+        best = min(cand, key=lambda i: abs(gt_times[i] - target))
+        dt = abs(gt_times[best] - target)
+        if dt <= max_dt:
+            out.append((est_t, gt[best][1], est_parts, dt))
+    return out
+
+offset = 0.0
+match_mode = "absolute"
+matches = match_with_offset(offset)
+
+if len(matches) < min_good_matches:
+    # Fallback for datasets whose estimated and GT clocks differ by a constant
+    # offset. Do not use first_gt - first_est as the main rule: VIO trajectories
+    # often start only after initialization, so first-frame alignment can shift
+    # the whole trajectory to the wrong GT segment.
+    best_offset = 0.0
+    best_matches = matches
+    for coarse in [x * 0.1 for x in range(-600, 601)]:
+        cand = match_with_offset(coarse)
+        if len(cand) > len(best_matches):
+            best_offset, best_matches = coarse, cand
+    fine_start = best_offset - 0.1
+    for i in range(41):
+        cand_offset = fine_start + i * 0.005
+        cand = match_with_offset(cand_offset)
+        if len(cand) > len(best_matches):
+            best_offset, best_matches = cand_offset, cand
+    offset = best_offset
+    matches = best_matches
+    match_mode = "searched_offset"
 
 if len(matches) < 3:
-    raise SystemExit(f"not enough matched poses: {len(matches)}, offset={offset}, max_dt={max_dt}")
+    raise SystemExit(f"not enough matched poses: {len(matches)}, offset={offset}, max_dt={max_dt}, match_mode={match_mode}")
 
 with open(gt_out, "w") as fg, open(est_out, "w") as fe:
     for stamp, gt_parts, est_parts, _ in matches:
@@ -349,6 +377,7 @@ with open(gt_out, "w") as fg, open(est_out, "w") as fe:
 
 mean_dt = sum(m[3] for m in matches) / len(matches)
 print(f"matches={len(matches)}")
+print(f"match_mode={match_mode}")
 print(f"offset={offset:.9f}")
 print(f"max_dt={max_dt:.9f}")
 print(f"mean_dt={mean_dt:.9f}")
