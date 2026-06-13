@@ -170,14 +170,17 @@ HEADER = [
     "Mode",
     "Sequence",
     "ORB-SLAM3 ATE (m)",
+    "ORB-SLAM3 ours ATE (m)",
     "PKS ATE (m)",
     "MSJCA-KS ATE (m)",
     "UW-IDVO ours ATE (m)",
     "ORB-SLAM3 Keyframes",
+    "ORB-SLAM3 ours Keyframes",
     "PKS Keyframes",
     "MSJCA-KS Keyframes",
     "UW-IDVO ours Keyframes",
     "ORB-SLAM3 Runtime (s)",
+    "ORB-SLAM3 ours Runtime (s)",
     "PKS Runtime (s)",
     "MSJCA-KS Runtime (s)",
     "UW-IDVO ours Runtime (s)",
@@ -279,10 +282,10 @@ def keyframes_for_run(row):
     return None
 
 
-def collect_ours(rows):
+def collect_method(rows, method):
     values = defaultdict(lambda: {"ate": [], "runtime": [], "keyframes": []})
     for row in rows:
-        if row.get("method") != "IDVO" or not status_is_usable(row.get("status", "")):
+        if row.get("method") != method or not status_is_usable(row.get("status", "")):
             continue
         mode = SENSOR_LABEL.get(row.get("sensor", ""))
         if not mode:
@@ -305,34 +308,57 @@ def mean_or_none(values):
     return mean(values) if values else None
 
 
+def normalize_literature_text(value):
+    if not isinstance(value, str):
+        return value
+    # Keep the source robust across Windows/Ubuntu console encodings. Some
+    # checked-out copies may contain mojibake for "≈" and "—"; normalize here
+    # so generated CSV/Markdown remains paper-ready.
+    if value.startswith("\u0e01\u0e36"):
+        return "\u2248" + value[2:]
+    if value == "\u0e01\u0e0a":
+        return "\u2014"
+    return value
+
+
+def fill_metric_columns(row, metric_values, prefix, per_mode_sequence_values=None):
+    mode = row["Mode"]
+    sequence = row["Sequence"]
+    if sequence == "Avg. / Total":
+        own = per_mode_sequence_values[mode] if per_mode_sequence_values is not None else {}
+        row[f"{prefix} ATE (m)"] = fmt(mean_or_none(own.get("ate", [])), 3)
+        row[f"{prefix} Runtime (s)"] = fmt(mean_or_none(own.get("runtime", [])), 1)
+        row[f"{prefix} Keyframes"] = fmt(mean_or_none(own.get("keyframes", [])), 1)
+        return
+
+    own = metric_values.get((mode, sequence), {})
+    own_ate = mean_or_none(own.get("ate", []))
+    own_runtime = mean_or_none(own.get("runtime", []))
+    own_keyframes = mean_or_none(own.get("keyframes", []))
+    row[f"{prefix} ATE (m)"] = fmt(own_ate, 3)
+    row[f"{prefix} Runtime (s)"] = fmt(own_runtime, 1)
+    row[f"{prefix} Keyframes"] = fmt(own_keyframes, 1)
+
+    if per_mode_sequence_values is not None:
+        if own_ate is not None:
+            per_mode_sequence_values[mode]["ate"].append(own_ate)
+        if own_runtime is not None:
+            per_mode_sequence_values[mode]["runtime"].append(own_runtime)
+        if own_keyframes is not None:
+            per_mode_sequence_values[mode]["keyframes"].append(own_keyframes)
+
+
 def build_table(rows):
-    ours = collect_ours(rows)
+    orb_ours = collect_method(rows, "ORB_SLAM3")
+    idvo_ours = collect_method(rows, "IDVO")
     output = []
-    per_mode_sequence_values = defaultdict(lambda: {"ate": [], "runtime": [], "keyframes": []})
+    per_mode_orb_values = defaultdict(lambda: {"ate": [], "runtime": [], "keyframes": []})
+    per_mode_idvo_values = defaultdict(lambda: {"ate": [], "runtime": [], "keyframes": []})
 
     for item in LITERATURE_ROWS:
-        row = {key: item.get(key, "") for key in HEADER}
-        mode = row["Mode"]
-        sequence = row["Sequence"]
-        if sequence != "Avg. / Total":
-            own = ours.get((mode, sequence), {})
-            own_ate = mean_or_none(own.get("ate", []))
-            own_runtime = mean_or_none(own.get("runtime", []))
-            own_keyframes = mean_or_none(own.get("keyframes", []))
-            row["UW-IDVO ours ATE (m)"] = fmt(own_ate, 3)
-            row["UW-IDVO ours Runtime (s)"] = fmt(own_runtime, 1)
-            row["UW-IDVO ours Keyframes"] = fmt(own_keyframes, 1)
-            if own_ate is not None:
-                per_mode_sequence_values[mode]["ate"].append(own_ate)
-            if own_runtime is not None:
-                per_mode_sequence_values[mode]["runtime"].append(own_runtime)
-            if own_keyframes is not None:
-                per_mode_sequence_values[mode]["keyframes"].append(own_keyframes)
-        else:
-            own = per_mode_sequence_values[mode]
-            row["UW-IDVO ours ATE (m)"] = fmt(mean_or_none(own["ate"]), 3)
-            row["UW-IDVO ours Runtime (s)"] = fmt(mean_or_none(own["runtime"]), 1)
-            row["UW-IDVO ours Keyframes"] = fmt(mean_or_none(own["keyframes"]), 1)
+        row = {key: normalize_literature_text(item.get(key, "")) for key in HEADER}
+        fill_metric_columns(row, orb_ours, "ORB-SLAM3 ours", per_mode_orb_values)
+        fill_metric_columns(row, idvo_ours, "UW-IDVO ours", per_mode_idvo_values)
         output.append(row)
     return output
 

@@ -22,3 +22,8 @@ After the run, `build_exp4_paper_table.py` creates:
 
 - `processed_results/exp4_paper_sota_table_<RUN_TAG>.csv`
 - `processed_results/exp4_paper_sota_table_<RUN_TAG>.md`
+
+The paper table keeps the literature ORB-SLAM3 columns and also adds local
+`ORB-SLAM3 ours` columns for ATE, keyframes, and runtime. This makes it possible
+to compare the literature baseline with the same ORB-SLAM3 build and hardware
+used for UW-IDVO.
