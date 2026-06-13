@@ -1,4 +1,4 @@
-/**
+﻿/**
 * InfoKFPolicy.cc
 * Implementation of Fisher Information-based keyframe gating
 */
@@ -49,7 +49,7 @@ double InfoKFPolicy::ComputeInformationDrop(
  * 3. If delta_E < -allowBitsDrop, reject keyframe (information not sufficient)
  * 4. Otherwise, allow keyframe
  */
-// AFTER (完整替换)
+// AFTER (瀹屾暣鏇挎崲)
 bool InfoKFPolicy::AllowNewKF(
     const Eigen::Matrix<double,6,6>& H_curr,
     int n_matches_curr,
@@ -58,53 +58,59 @@ bool InfoKFPolicy::AllowNewKF(
 {
     if(!params.use) return true;
 
-    // ---- 0) 初始化阶段：允许创建第一个参考 ----
+    // ---- 0) 鍒濆鍖栭樁娈碉細鍏佽鍒涘缓绗竴涓弬鑰?----
     if(!state.initialized) {
-        std::cout << "[InfoKF] First KF - initializing reference\n";
+        if(params.verbose)
+            std::cout << "[InfoKF] First KF - initializing reference\n";
         return true;
     }
 
-    // ---- 1) 基本信息差 ΔE_t ----
+    // ---- 1) 鍩烘湰淇℃伅宸?螖E_t ----
     const double delta_bits = ComputeInformationDrop(H_curr, state.H_ref, params.lambdaMean);
 
-    // ---- 2) 基于匹配数的 tracking 质量 r_t ∈ [0,1] ----
-    // nref 取参考关键帧对应的匹配数，若为 0 则退化为 1 防止除零
+    // ---- 2) 鍩轰簬鍖归厤鏁扮殑 tracking 璐ㄩ噺 r_t 鈭?[0,1] ----
+    // nref 鍙栧弬鑰冨叧閿抚瀵瑰簲鐨勫尮閰嶆暟锛岃嫢涓?0 鍒欓€€鍖栦负 1 闃叉闄ら浂
     const int nref = std::max(1, state.refMatches);
     const double r = std::max(
         0.0,
         std::min(1.0, static_cast<double>(n_matches_curr) / static_cast<double>(nref))
     );
 
-    // ---- 3) 对称信息阈值 T_eff(r) = clip( T0 * (1 + alpha*(1-r)), [Tmin, Tmax] ) ----
-    // 其中 T0 = allowBitsDrop 是你要主要调节的“信息变化容忍度”
-    double Teff = params.allowBitsDrop * (1.0 - params.dynAlpha * (1.0 - r));
+    // ---- 3) 瀵圭О淇℃伅闃堝€?T_eff(r) = clip( T0 * (1 + alpha*(1-r)), [Tmin, Tmax] ) ----
+    // 鍏朵腑 T0 = allowBitsDrop 鏄綘瑕佷富瑕佽皟鑺傜殑鈥滀俊鎭彉鍖栧蹇嶅害鈥?    double Teff = params.allowBitsDrop * (1.0 - params.dynAlpha * (1.0 - r));
     Teff = std::max(params.dynTauMin, std::min(params.dynTauMax, Teff));
 
-    // ---- 4) 累计/平滑信息下降 D_t = ρ D_{t-1} + min(0, ΔE_t) ----
+    // ---- 4) 绱/骞虫粦淇℃伅涓嬮檷 D_t = 蟻 D_{t-1} + min(0, 螖E_t) ----
     state.cumDrop = params.cumDecay * state.cumDrop + std::min(0.0, delta_bits);
 
-    // ---- 5) 最大帧距强制插帧 ----
+    // ---- 5) 鏈€澶у抚璺濆己鍒舵彃甯?----
     const bool force_by_gap = (params.maxFramesForce > 0) &&
                               (state.framesSinceRef >= params.maxFramesForce);
 
-    std::cout << "[InfoKF] ΔE=" << std::fixed << std::setprecision(3) << delta_bits
-              << "  |ΔE|_thr=" << Teff
+    if(params.verbose)
+    {
+    std::cout << "[InfoKF] 螖E=" << std::fixed << std::setprecision(3) << delta_bits
+              << "  |螖E|_thr=" << Teff
               << "  r="        << std::setprecision(3) << r
               << "  D_cum="    << state.cumDrop
               << "  gap="      << state.framesSinceRef
               << (force_by_gap ? " (FORCE)" : "")
               << std::endl;
+    }
 
-    // ---- 6) 允许插帧的 OR 条件（对称 |ΔE| 阈值 + 累积下降 + 最大帧距）----
+    // ---- 6) 鍏佽鎻掑抚鐨?OR 鏉′欢锛堝绉?|螖E| 闃堝€?+ 绱Н涓嬮檷 + 鏈€澶у抚璺濓級----
     const bool allow =
-        (std::fabs(delta_bits) > Teff) ||      // 对称信息阈值：信息显著变化（增益/退化）
-        (state.cumDrop < -params.cumThr) ||    // 长期信息缓慢下降
-        force_by_gap;                          // 帧距兜底
+        (std::fabs(delta_bits) > Teff) ||      // 瀵圭О淇℃伅闃堝€硷細淇℃伅鏄捐憲鍙樺寲锛堝鐩?閫€鍖栵級
+        (state.cumDrop < -params.cumThr) ||    // 闀挎湡淇℃伅缂撴參涓嬮檷
+        force_by_gap;                          // 甯ц窛鍏滃簳
 
-    if(allow) {
-        std::cout << "[InfoKF] ALLOW\n";
-    } else {
-        std::cout << "[InfoKF] REJECT\n";
+    if(params.verbose)
+    {
+        if(allow) {
+            std::cout << "[InfoKF] ALLOW\n";
+        } else {
+            std::cout << "[InfoKF] REJECT\n";
+        }
     }
     return allow;
 }
@@ -134,12 +140,14 @@ void InfoKFPolicy::OnKeyFrameCreated(
         state.initialized = true;
     }
 
-    // Reset counter
+    // Reset counters after accepting a new reference keyframe.
+    state.numKFsSinceRef = 0;
+    state.framesSinceRef = 0;
+    state.cumDrop = 0.0;
 
-    state.numKFsSinceRef = 0; // 如果还保留这个字段
-    state.framesSinceRef = 0; // 新增：重置帧距
-    state.cumDrop = 0.0;      // 新增：累计下降清零
-    std::cout << "[InfoKF] Reference updated after new KF creation" << std::endl;
+    if(params.verbose)
+        std::cout << "[InfoKF] Reference updated after new KF creation" << std::endl;
 }
 
 } // namespace ORB_SLAM3
+

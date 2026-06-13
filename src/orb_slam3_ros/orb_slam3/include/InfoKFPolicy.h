@@ -40,6 +40,7 @@ struct InfoKFParams
 
     // --- 新增：最大帧距 ---
     int    maxFramesForce; // G_max
+    bool   verbose;
     InfoKFParams()
         : use(true)
         , allowBitsDrop(1.0)
@@ -52,6 +53,7 @@ struct InfoKFParams
         , cumDecay(0.95)
         , cumThr(0.5)
         , maxFramesForce(60)
+        , verbose(true)
     {}
 };
 

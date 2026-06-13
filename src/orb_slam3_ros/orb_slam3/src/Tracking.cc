@@ -3881,11 +3881,14 @@ bool Tracking::TrackLocalMap()
             mAdaptiveIdpsTimeMs += std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
                 std::chrono::steady_clock::now() - idpsStart).count();
 
-            std::cout << "[InfoSel] (UNIFIED) Frame " << mCurrentFrame.mnId
-                      << " candidates(before): " << nBefore
-                      << " selected(after): " << selected.size()
-                      << " ratio: " << std::fixed << std::setprecision(2)
-                      << (100.0 * selected.size() / std::max(1, nBefore)) << "%\n";
+            if(frameInfoSelParams.verbose)
+            {
+                std::cout << "[InfoSel] (UNIFIED) Frame " << mCurrentFrame.mnId
+                          << " candidates(before): " << nBefore
+                          << " selected(after): " << selected.size()
+                          << " ratio: " << std::fixed << std::setprecision(2)
+                          << (100.0 * selected.size() / std::max(1, nBefore)) << "%\n";
+            }
 
             if(mAdaptiveConfig.enable_logging || mAdaptiveConfig.enable_adaptive_idvo)
             {
@@ -3901,8 +3904,11 @@ bool Tracking::TrackLocalMap()
         else
         {
             // nBefore == 0：本帧没有候选，已在开头清空了 selected/candidate 标记
-            std::cout << "[InfoSel] (UNIFIED) Frame " << mCurrentFrame.mnId
-                      << " candidates(before): 0 selected(after): 0 ratio: 0.00%\n";
+            if(mInfoSelParams.verbose)
+            {
+                std::cout << "[InfoSel] (UNIFIED) Frame " << mCurrentFrame.mnId
+                          << " candidates(before): 0 selected(after): 0 ratio: 0.00%\n";
+            }
             if(mAdaptiveConfig.enable_logging || mAdaptiveConfig.enable_adaptive_idvo)
             {
                 mAdaptiveLastState.frame_id = mCurrentFrame.mnId;
@@ -4280,7 +4286,8 @@ bool Tracking::NeedNewKeyFrame()
 
                 bool infoAllow = InfoKFPolicy::AllowNewKF(H_curr, n_matches_curr, mInfoKFState, frameInfoKFParams);
                 if(!infoAllow) {
-                    std::cout << "[Tracking] KF rejected by info gating" << std::endl;
+                    if(frameInfoKFParams.verbose)
+                        std::cout << "[Tracking] KF rejected by info gating" << std::endl;
                     mAdaptiveIdkdTimeMs += std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
                         std::chrono::steady_clock::now() - idkdStart).count();
                     return false;
@@ -4498,7 +4505,9 @@ void Tracking::LoadInfoParams(cv::FileStorage& fSettings)
         hasNode("InfoSelector.MinPxDist") ||
         hasNode("InfoSelector.UseUniform") ||
         hasNode("InfoSelector.LambdaInit") ||
-        hasNode("InfoSelector.StereoSafeKeep");
+        hasNode("InfoSelector.StereoSafeKeep") ||
+        hasNode("InfoSelector.Verbose") ||
+        hasNode("UWIDVO.Verbose");
 
     const bool hasInfoKFConfig =
         hasNode("InfoKF.Use") ||
@@ -4510,7 +4519,9 @@ void Tracking::LoadInfoParams(cv::FileStorage& fSettings)
         hasNode("InfoKF.Dyn.TauMax") ||
         hasNode("InfoKF.Cum.Decay") ||
         hasNode("InfoKF.Cum.Thr") ||
-        hasNode("InfoKF.MaxFramesForce");
+        hasNode("InfoKF.MaxFramesForce") ||
+        hasNode("InfoKF.Verbose") ||
+        hasNode("UWIDVO.Verbose");
 
     mUseInfoSelector = false;
     mInfoKFParams.use = false;
@@ -4544,6 +4555,10 @@ void Tracking::LoadInfoParams(cv::FileStorage& fSettings)
         node = fSettings["InfoSelector.StereoSafeKeep"];
         if (!node.empty())
             mInfoSelParams.stereoSafeKeep = ((int)node != 0);
+
+        node = fSettings["InfoSelector.Verbose"];
+        if (!node.empty())
+            mInfoSelParams.verbose = ((int)node != 0);
     }
 
     if (hasInfoKFConfig)
@@ -4587,6 +4602,18 @@ void Tracking::LoadInfoParams(cv::FileStorage& fSettings)
         node = fSettings["InfoKF.MaxFramesForce"];
         if (!node.empty())
             mInfoKFParams.maxFramesForce = (int)node;
+
+        node = fSettings["InfoKF.Verbose"];
+        if (!node.empty())
+            mInfoKFParams.verbose = ((int)node != 0);
+    }
+
+    cv::FileNode verboseNode = fSettings["UWIDVO.Verbose"];
+    if (!verboseNode.empty())
+    {
+        const bool verbose = ((int)verboseNode != 0);
+        mInfoSelParams.verbose = verbose;
+        mInfoKFParams.verbose = verbose;
     }
 
     InitializeAdaptiveParams();
@@ -4597,7 +4624,9 @@ void Tracking::LoadInfoParams(cv::FileStorage& fSettings)
               << "  TopK: " << mInfoSelParams.topK << "\n"
               << "  w_uniform: " << mInfoSelParams.w_uniform << "\n"
               << "  StereoSafeKeep: " << (mInfoSelParams.stereoSafeKeep ? "YES" : "NO") << "\n"
+              << "  InfoSelector verbose: " << (mInfoSelParams.verbose ? "YES" : "NO") << "\n"
               << "  InfoKF enabled: " << (mInfoKFParams.use ? "YES" : "NO") << "\n"
+              << "  InfoKF verbose: " << (mInfoKFParams.verbose ? "YES" : "NO") << "\n"
               << "  AllowBitsDrop(bits): " << mInfoKFParams.allowBitsDrop << "\n"
               << "  Dyn(alpha,beta,tau[min,max]): "
               << mInfoKFParams.dynAlpha << "," << mInfoKFParams.dynBeta << ","

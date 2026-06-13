@@ -1,4 +1,4 @@
-%YAML:1.0
+﻿%YAML:1.0
 
 # Exp.4 EuRoC mono-inertial base configuration.
 # Edit this file to change experiment parameters; the script only injects mode switches and log paths.
@@ -82,3 +82,7 @@ EnableAdaptiveIDVO: 0
 AdaptivePolicyType: "Fixed"
 EnableAdaptiveLogging: 1
 AdaptiveLogPath: "adaptive_frames.csv"
+
+UWIDVO.Verbose: 0
+InfoSelector.Verbose: 0
+InfoKF.Verbose: 0

@@ -303,9 +303,11 @@ std::vector<int> InfoGain::SelectByInformationGain(
         WoodburyUpdate(H, J);
     }
 
-    // Debug output
-    std::cout << "[InfoGain] Selected " << selectedIndices.size() 
-              << " / " << matches.size() << " features" << std::endl;
+    if(params.verbose)
+    {
+        std::cout << "[InfoGain] Selected " << selectedIndices.size()
+                  << " / " << matches.size() << " features" << std::endl;
+    }
 
     return selectedIndices;
 }

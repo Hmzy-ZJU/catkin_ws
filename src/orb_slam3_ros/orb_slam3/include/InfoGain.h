@@ -32,6 +32,7 @@ struct InfoSelectParams
     bool useUniform;
     double lambdaInit;
     bool stereoSafeKeep;
+    bool verbose;
 
     InfoSelectParams()
         : topK(400)
@@ -40,6 +41,7 @@ struct InfoSelectParams
         , useUniform(true)
         , lambdaInit(1.0e-3)
         , stereoSafeKeep(true)
+        , verbose(true)
     {}
 };
 
