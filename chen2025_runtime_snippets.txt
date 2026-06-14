@@ -1,0 +1,386 @@
+
+--- runtime at 38042 ---
+cy.
+4.3 Running time comparison
+The real-time computing capabilities is crucial for visual
+SLAM systems. To assess the algorithm’s performance, we
+tested the MH01 and MH04 in the EuRoC dataset, and exe-
+cuted each method 10 times in different modes and recorded
+the average time. The evaluation maintained a time mea-
+surement accuracy of 0.1 s. Figure 14 illustrates that both
+PKS and the proposed method involve the intricate pro-
+cess of establishing a spatial cone for map points, thereby
+increasing the complexity of keyframe selection compared
+to the ORB-SLAM3 algorithm, which utilizes a ﬁxed thresh-
+old. Although the PKS and proposed MSJCA-KS meth-
+ods exhibit greater complexity in keyframe selection, the
+proposed MSJCA-KS method processes fewer keyframes,
+resulting in a slightly shorter runtime than the PKS algorithm.
+Nevertheless, these additional computations have a negligi-
+ble impact on real-time execution, allowing the algorithm to
+meet the required real-time constraints.
+4.4 Ablation experiment
+To evaluate the impact of the proposed MSJCA-KS method,
+we conducted a series of ablation experiments. The RMSE
+A T is used as a measure of positioning accuracy. The results
+show that when only camera geometry constraint is used,
+or only camera geometry and UD constraints are used, the
+positioning accuracy of the MSJCA-KS method is essentially
+the same as that of the ORB-SLAM3 or PKS algorithms.
+However, when the IMU joint constraints are used into the
+MSJCA-KS method, the positioning accuracy is signiﬁcantly
+improved, surpassing the performance of the ORB-SLAM3
+or PKS algorithms. These results provide compelling evi-
+dence for the effectiveness of IMU joint constraints in
+improving the accuracy of this method. The experimental
+results in Table 3,F i g s .15 and 16 show that the RMSE value
+gradually decreases as the number of constraints increases,
+and the estimated trajectory is closer to the ground truth tra-
+jectory. This trend indicates the system stability is improved
+and the positioning accuracy becomes high. Therefore, it
+can be inferred that all three constraints are essential, as the
+absence of any one of them could adversely affect the accu-
+racy and stability of the system.
+123
+
+524 Intelligent Service Robotics (2025) 18:513–527
+Fig. 10 Comparison of
+
+
+--- Runtime at 38042 ---
+cy.
+4.3 Running time comparison
+The real-time computing capabilities is crucial for visual
+SLAM systems. To assess the algorithm’s performance, we
+tested the MH01 and MH04 in the EuRoC dataset, and exe-
+cuted each method 10 times in different modes and recorded
+the average time. The evaluation maintained a time mea-
+surement accuracy of 0.1 s. Figure 14 illustrates that both
+PKS and the proposed method involve the intricate pro-
+cess of establishing a spatial cone for map points, thereby
+increasing the complexity of keyframe selection compared
+to the ORB-SLAM3 algorithm, which utilizes a ﬁxed thresh-
+old. Although the PKS and proposed MSJCA-KS meth-
+ods exhibit greater complexity in keyframe selection, the
+proposed MSJCA-KS method processes fewer keyframes,
+resulting in a slightly shorter runtime than the PKS algorithm.
+Nevertheless, these additional computations have a negligi-
+ble impact on real-time execution, allowing the algorithm to
+meet the required real-time constraints.
+4.4 Ablation experiment
+To evaluate the impact of the proposed MSJCA-KS method,
+we conducted a series of ablation experiments. The RMSE
+A T is used as a measure of positioning accuracy. The results
+show that when only camera geometry constraint is used,
+or only camera geometry and UD constraints are used, the
+positioning accuracy of the MSJCA-KS method is essentially
+the same as that of the ORB-SLAM3 or PKS algorithms.
+However, when the IMU joint constraints are used into the
+MSJCA-KS method, the positioning accuracy is signiﬁcantly
+improved, surpassing the performance of the ORB-SLAM3
+or PKS algorithms. These results provide compelling evi-
+dence for the effectiveness of IMU joint constraints in
+improving the accuracy of this method. The experimental
+results in Table 3,F i g s .15 and 16 show that the RMSE value
+gradually decreases as the number of constraints increases,
+and the estimated trajectory is closer to the ground truth tra-
+jectory. This trend indicates the system stability is improved
+and the positioning accuracy becomes high. Therefore, it
+can be inferred that all three constraints are essential, as the
+absence of any one of them could adversely affect the accu-
+racy and stability of the system.
+123
+
+524 Intelligent Service Robotics (2025) 18:513–527
+Fig. 10 Comparison of
+
+
+--- running time at 37250 ---
+Comparison of
+time-varying trajectories in
+Monocular-Inertial mode for
+Room2 in the TUM_VI dataset
+stereo-inertial mode, for both the PKS algorithm and the
+MSJCA-KS method, keyframe selection primarily relies on
+photogrammetry and camera geometric constraints, thereby
+mitigating the inﬂuence of depth information on keyframe
+selection to some extent. It is important to note that, compared
+to the PKS algorithm, the proposed MSJCA-KS algorithm
+incorporates a real-time motion monitoring mechanism and
+utilizes the IMU to optimize and adjust the adaptive thresh-
+old. This effectively enhances the algorithm’s performance in
+challenging motion scenarios. And the method proposed in
+this paper has lower number of selected keyframes compared
+to the PKS algorithm, while achieving higher accuracy.
+4.3 Running time comparison
+The real-time computing capabilities is crucial for visual
+SLAM systems. To assess the algorithm’s performance, we
+tested the MH01 and MH04 in the EuRoC dataset, and exe-
+cuted each method 10 times in different modes and recorded
+the average time. The evaluation maintained a time mea-
+surement accuracy of 0.1 s. Figure 14 illustrates that both
+PKS and the proposed method involve the intricate pro-
+cess of establishing a spatial cone for map points, thereby
+increasing the complexity of keyframe selection compared
+to the ORB-SLAM3 algorithm, which utilizes a ﬁxed thresh-
+old. Although the PKS and proposed MSJCA-KS meth-
+ods exhibit greater complexity in keyframe selection, the
+proposed MSJCA-KS method processes fewer keyframes,
+resulting in a slightly shorter runtime than the PKS algorithm.
+Nevertheless, these additional computations have a negligi-
+ble impact on real-time execution, allowing the algorithm to
+meet the required real-time constraints.
+4.4 Ablation experiment
+To evaluate the impact of the proposed MSJCA-KS method,
+we conducted a series of ablation experiments. The RMSE
+A T is used as a measure of positioning accuracy. The results
+show that when only camera geometry constraint is used,
+or only camera geometry and UD constraints are used, the
+positioning accuracy of the MSJCA-KS method is essentially
+the same as that of the ORB-SLAM3 or PKS algorithms.
+However, when the IMU joint constraints are used into the
+MSJCA-KS method, the positioning 
+
+--- Running time at 37250 ---
+Comparison of
+time-varying trajectories in
+Monocular-Inertial mode for
+Room2 in the TUM_VI dataset
+stereo-inertial mode, for both the PKS algorithm and the
+MSJCA-KS method, keyframe selection primarily relies on
+photogrammetry and camera geometric constraints, thereby
+mitigating the inﬂuence of depth information on keyframe
+selection to some extent. It is important to note that, compared
+to the PKS algorithm, the proposed MSJCA-KS algorithm
+incorporates a real-time motion monitoring mechanism and
+utilizes the IMU to optimize and adjust the adaptive thresh-
+old. This effectively enhances the algorithm’s performance in
+challenging motion scenarios. And the method proposed in
+this paper has lower number of selected keyframes compared
+to the PKS algorithm, while achieving higher accuracy.
+4.3 Running time comparison
+The real-time computing capabilities is crucial for visual
+SLAM systems. To assess the algorithm’s performance, we
+tested the MH01 and MH04 in the EuRoC dataset, and exe-
+cuted each method 10 times in different modes and recorded
+the average time. The evaluation maintained a time mea-
+surement accuracy of 0.1 s. Figure 14 illustrates that both
+PKS and the proposed method involve the intricate pro-
+cess of establishing a spatial cone for map points, thereby
+increasing the complexity of keyframe selection compared
+to the ORB-SLAM3 algorithm, which utilizes a ﬁxed thresh-
+old. Although the PKS and proposed MSJCA-KS meth-
+ods exhibit greater complexity in keyframe selection, the
+proposed MSJCA-KS method processes fewer keyframes,
+resulting in a slightly shorter runtime than the PKS algorithm.
+Nevertheless, these additional computations have a negligi-
+ble impact on real-time execution, allowing the algorithm to
+meet the required real-time constraints.
+4.4 Ablation experiment
+To evaluate the impact of the proposed MSJCA-KS method,
+we conducted a series of ablation experiments. The RMSE
+A T is used as a measure of positioning accuracy. The results
+show that when only camera geometry constraint is used,
+or only camera geometry and UD constraints are used, the
+positioning accuracy of the MSJCA-KS method is essentially
+the same as that of the ORB-SLAM3 or PKS algorithms.
+However, when the IMU joint constraints are used into the
+MSJCA-KS method, the positioning 
+
+--- computational at 1528 ---
+ method with Multi-Source Joint Constraints (MSJCA-KS), which addresses the challenges
+by exploiting camera geometry, real-time inertial measurement unit (IMU) data analysis, and effective point distribution
+constraints. Particularly, we used adaptive threshold conditions based on camera geometry for the keyframe selection under
+varying scenes. A real-time state detection mechanism is used to reﬁne these thresholds by using IMU data during rapid
+motion. Furthermore, a constraint mechanism is used to ensure a balanced distribution of keyframes. Our keyframe selection
+method is integrated into the ORB-SLAM3 framework to perform SLAM tasks. The effectiveness of our method is validated
+on the EuRoC dataset and the TUM dataset in terms of absolute trajectory error (A TE), keyframe quality, and computational
+efﬁciency. When compared to the photogrammetric keyframe selection (PKS) algorithm, the proposed method achieves a
+16% improvement in localization accuracy in the EuRoC dataset and 27% and 23% in the TUM dataset for monocular and
+stereo cameras, respectively.
+Keywords Visual SLAM · Keyframe selection · Multi-source joint constraints · Adaptive threshold · IMU data · Localization
+accuracy
+1 Introduction
+Simultaneous localization and mapping (SLAM) technology
+has emerged as a crucial research topic in modern robotics
+and intelligent industries [ 1, 2]. Visual SLAM is particu-
+larly popular in intelligent perception for mobile robots due
+to its real-time capability, cost-effectiveness, and ability to
+capture color texture information [3]. By treating map points
+and poses from all frames as independent variables in nonlin-
+ear optimization, the cumulative error of the front-end pose
+is minimized, leading to improved positioning accuracy in
+visual SLAM [ 4]. However, optimizing visual SLAM poses
+B Wen Ye
+wenye@buaa.edu.cn
+Hongmei Chen
+chenhongmei@haut.edu.cn
+1 Henan University of Technology, Zhengzhou, China
+2 University of Essex, Colchester, UK
+3 National Institute of Metrology, Beijing, China
+challenges in terms of computational complexity and real-
+time requirements, primarily due to the substantial amount
+of data involved [ 5]. To address this issue, it is essential to
+reduce data redundancy while maintaining accuracy and reli-
+ability [ 6]. The selection of appr
+
+--- CPU at 30486 ---
+computer vision algorithms in autonomous nav-
+igation scenarios. Each sequence in this dataset includes
+stereo images, synchronized IMU measurements, and ground
+truth motion trajectories. Similarly, the TUM_VI dataset
+provides high-quality image sequences, synchronized IMU
+measurements and precise camera motion trajectories, facili-
+tating the evaluation and comparison of various visual inertial
+navigation systems. To comprehensively evaluate the pro-
+posed method, MSJCA-KS, in comparison to ORB-SLAM3
+[31] and PKS [ 9], the absolute trajectory error (A TE) was
+calculated by comparing the estimated trajectories with the
+ground truth trajectories. The evaluations were conducted
+in both monocular-inertial and stereo-inertial modes. The
+experiments were performed on an Intel(R) Core i5-8300 H
+CPU (8 cores @ 2.3GHz) with 16GB RAM. Each dataset was
+run 10 times, and the average results were used to mitigate
+random errors in the outcomes.
+4.1 Localization accuracy
+Localization accuracy is evaluated by using the root mean
+square error of the absolute trajectory (RMSE A T) as a met-
+ric. Table 1 and Table 2 illustrate that the RMSE A T of
+the proposed MSJCA-KS is smaller in both monocular and
+stereo-inertial modes compared to the other two algorithms
+for most sequences. Notably, the performance improve-
+ment is particularly obvious in the monocular-inertial mode.
+Experimental results show that the estimated trajectories
+by the proposed MSJCA-KS are closely consistent with
+the ground truth trajectories. In both monocular-inertial and
+stereoscopic inertial modes, the localization accuracy sur-
+passes that of the PKS algorithm by 16% in monocular and
+stereoscopic modes in the EuRoC dataset. In the monocular-
+inertial mode, the localization accuracy surpasses that of the
+PKS algorithm by 27%, while in the stereoscopic inertial
+mode, the positioning accuracy exceeds that of the PKS algo-
+rithm by 23% in the TUM_VI dataset.
+To qualitatively validate the proposed keyframe selec-
+tion method, MSJCA-KS, the experiments were conducted
+on the EuRoC dataset sequences MH02 and MH05 in both
+monocular and stereo-inertial modes. The estimated trajecto-
+ries and ground truth trajectories of three algorithms, namely
+MSJCA-KS, ORB-SLAM3, and PKS, were illustrated as fol-
+lows: Figs. 5 an
+
+--- Keyframes at 1267 ---
+ectiveness of keyframe selection is crucial for visual simultaneous localization and mapping (SLAM) algorithms.
+Stability and adaptability of the selection are challenging issues in complex environments. This paper introduces a novel
+Adaptive Keyframe Selection method with Multi-Source Joint Constraints (MSJCA-KS), which addresses the challenges
+by exploiting camera geometry, real-time inertial measurement unit (IMU) data analysis, and effective point distribution
+constraints. Particularly, we used adaptive threshold conditions based on camera geometry for the keyframe selection under
+varying scenes. A real-time state detection mechanism is used to reﬁne these thresholds by using IMU data during rapid
+motion. Furthermore, a constraint mechanism is used to ensure a balanced distribution of keyframes. Our keyframe selection
+method is integrated into the ORB-SLAM3 framework to perform SLAM tasks. The effectiveness of our method is validated
+on the EuRoC dataset and the TUM dataset in terms of absolute trajectory error (A TE), keyframe quality, and computational
+efﬁciency. When compared to the photogrammetric keyframe selection (PKS) algorithm, the proposed method achieves a
+16% improvement in localization accuracy in the EuRoC dataset and 27% and 23% in the TUM dataset for monocular and
+stereo cameras, respectively.
+Keywords Visual SLAM · Keyframe selection · Multi-source joint constraints · Adaptive threshold · IMU data · Localization
+accuracy
+1 Introduction
+Simultaneous localization and mapping (SLAM) technology
+has emerged as a crucial research topic in modern robotics
+and intelligent industries [ 1, 2]. Visual SLAM is particu-
+larly popular in intelligent perception for mobile robots due
+to its real-time capability, cost-effectiveness, and ability to
+capture color texture information [3]. By treating map points
+and poses from all frames as independent variables in nonlin-
+ear optimization, the cumulative error of the front-end pose
+is minimized, leading to improved positioning accuracy in
+visual SLAM [ 4]. However, optimizing visual SLAM poses
+B Wen Ye
+wenye@buaa.edu.cn
+Hongmei Chen
+chenhongmei@haut.edu.cn
+1 Henan University of Technology, Zhengzhou, China
+2 University of Essex, Colchester, UK
+3 National Institute of Metrology, Beijing, China
+challenges in te
+
+--- EuRoC at 1426 ---
+ challenging issues in complex environments. This paper introduces a novel
+Adaptive Keyframe Selection method with Multi-Source Joint Constraints (MSJCA-KS), which addresses the challenges
+by exploiting camera geometry, real-time inertial measurement unit (IMU) data analysis, and effective point distribution
+constraints. Particularly, we used adaptive threshold conditions based on camera geometry for the keyframe selection under
+varying scenes. A real-time state detection mechanism is used to reﬁne these thresholds by using IMU data during rapid
+motion. Furthermore, a constraint mechanism is used to ensure a balanced distribution of keyframes. Our keyframe selection
+method is integrated into the ORB-SLAM3 framework to perform SLAM tasks. The effectiveness of our method is validated
+on the EuRoC dataset and the TUM dataset in terms of absolute trajectory error (A TE), keyframe quality, and computational
+efﬁciency. When compared to the photogrammetric keyframe selection (PKS) algorithm, the proposed method achieves a
+16% improvement in localization accuracy in the EuRoC dataset and 27% and 23% in the TUM dataset for monocular and
+stereo cameras, respectively.
+Keywords Visual SLAM · Keyframe selection · Multi-source joint constraints · Adaptive threshold · IMU data · Localization
+accuracy
+1 Introduction
+Simultaneous localization and mapping (SLAM) technology
+has emerged as a crucial research topic in modern robotics
+and intelligent industries [ 1, 2]. Visual SLAM is particu-
+larly popular in intelligent perception for mobile robots due
+to its real-time capability, cost-effectiveness, and ability to
+capture color texture information [3]. By treating map points
+and poses from all frames as independent variables in nonlin-
+ear optimization, the cumulative error of the front-end pose
+is minimized, leading to improved positioning accuracy in
+visual SLAM [ 4]. However, optimizing visual SLAM poses
+B Wen Ye
+wenye@buaa.edu.cn
+Hongmei Chen
+chenhongmei@haut.edu.cn
+1 Henan University of Technology, Zhengzhou, China
+2 University of Essex, Colchester, UK
+3 National Institute of Metrology, Beijing, China
+challenges in terms of computational complexity and real-
+time requirements, primarily due to the substantial amount
+of data involved [ 5]. To address this issue, it is essent
+
+--- Table at 10626 ---
+urce constraints from camera geometry
+123
+
+Intelligent Service Robotics (2025) 18:513–527 515
+and IMU measurement to adaptively adjust the selection
+threshold, signiﬁcantly enhancing stability and performance
+in complex scenes. The data association-based approach
+improves feature point consistency; however, its dependence
+on static thresholds limits generalization in dynamic environ-
+ments. We reduce this dependency and enhance robustness
+through spatial cone point and uniform distribution con-
+straints. Appearance-based methods work well in illumina-
+tion changes or sparse textures but often overlook geometric
+constraints, making them less effective for rapid movements.
+Our approach integrates geometric information, adaptive
+thresholding, and joint multi-source constraints to main-
+tain stable system performance in variable environments.
+While the hybrid method merges geometric considerations
+with static thresholds, it remains less adaptable during rapid
+motion or signiﬁcant scene changes. In this paper, we dynam-
+ically adjust thresholds via real-time state detection to better
+handle abrupt motions while improving keyframe selection
+accuracy and system robustness.
+3 Multi-source joint constraint adaptive
+keyframe selection (MSJCA-KS)
+This paper presents a novel keyframe selection method for
+visual SLAM, which leverages multi-source fusion technol-
+ogy and photogrammetric techniques. The proposed method,
+MSJCA-KS, addresses the problem of redundancy in video
+frames by incorporating multiple constraints and joint con-
+straints from various sources [ 32]. This approach improves
+the adaptability and stability of keyframe selection, lead-
+ing to enhanced performance in Visual SLAM systems [ 33].
+The method utilizes both camera and IMU sensors, employ-
+ing triple constraints with threshold conditions for keyframe
+selection. Figure 1 illustrates the keyframe selection process
+of MSJCA-KS.
+3.1 Keyframe selection process
+The keyframe selection process in our method involves sev-
+eral steps. Firstly, we process the input camera video data
+and IMU data using camera geometric constraints. This step
+includes the recovery of three-dimensional map points and
+the deﬁnition of a four-region spatial cone for these points.
+These points are known as the spatial cone points. To 

@@ -38,7 +38,7 @@ Viewer.ViewpointF: 500.0
 
 # UW-IDVO paper parameters, Table I.
 InfoSelector.Enable: 1
-InfoSelector.TopK: 95
+InfoSelector.TopK: 150
 InfoSelector.UseUniform: 1
 InfoSelector.w_uniform: 0.12
 InfoSelector.MinPxDist: 7
@@ -47,7 +47,7 @@ InfoSelector.StereoSafeKeep: 0
 
 InfoSelector.Greedy: 0
 InfoKF.Use: 1
-InfoKF.AllowBitsDrop: 2.2
+InfoKF.AllowBitsDrop: 1.6
 InfoKF.LambdaMean: 1.0e-3
 InfoKF.Dyn.Alpha: 0.25
 InfoKF.Dyn.Beta: 0.0
