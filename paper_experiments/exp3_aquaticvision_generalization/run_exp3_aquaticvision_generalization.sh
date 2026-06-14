@@ -19,6 +19,7 @@ RUN_TAG="${RUN_TAG:-exp3_aquaticvision_$(date +%Y%m%d_%H%M%S)}"
 RESULT_ROOT="$EXP_DIR/raw_results/${RUN_TAG}"
 SUMMARY="$EXP_DIR/processed_results/exp3_all_runs_${RUN_TAG}.csv"
 MASTER_LOG="$EXP_DIR/logs/${RUN_TAG}.log"
+IMAGE_PUBLISHER="$EXP_DIR/tools/publish_stereo_images_ros.py"
 
 mkdir -p "$RESULT_ROOT" "$EXP_DIR/processed_results" "$EXP_DIR/logs"
 : > "$MASTER_LOG"
@@ -45,6 +46,16 @@ mode_switches() {
     IDPS) printf '%s %s\n' 1 0 ;;
     IDKD) printf '%s %s\n' 0 1 ;;
     IDVO) printf '%s %s\n' 1 1 ;;
+    *) return 1 ;;
+  esac
+}
+
+normalize_source() {
+  local lower
+  lower="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$lower" in
+    stereo_images|stereo-images|images|image_pairs|image-pairs) printf '%s\n' stereo_images ;;
+    rosbag|bag) printf '%s\n' rosbag ;;
     *) return 1 ;;
   esac
 }
@@ -119,6 +130,23 @@ sequence_dir() {
 bag_for_sequence() {
   local seq_dir="$1"
   find "$seq_dir/data rosbag" -maxdepth 1 -type f -name '*200hz_images_20hz.bag' | sort | head -1
+}
+
+image_source_stats() {
+  local seq_dir="$1" sensor="$2" out_file="$3"
+  python3 "$IMAGE_PUBLISHER" \
+    --stats-only \
+    --sequence-dir "$seq_dir" \
+    --sensor "$sensor" \
+    --start "$BAG_START" \
+    --duration "$BAG_DURATION" \
+    --rate "$BAG_RATE" \
+    --max-frames "$MAX_FRAMES" > "$out_file" 2>&1
+}
+
+stat_value() {
+  local file="$1" key="$2"
+  awk -F= -v key="$key" '$1 == key { print $2; found=1; exit } END { if(!found) print "" }' "$file"
 }
 
 apply_mode_to_config() {
@@ -250,12 +278,20 @@ PY
 run_case() {
   local seq="$1" sensor="$2" mode="$3" run_id="$4"
   local run_dir="$RESULT_ROOT/AquaticVision/$seq/$sensor/$mode/run_${run_id}"
-  local seq_dir bag base_cfg cfg adaptive_csv launch_file tag start_time end_time elapsed exit_code traj_poses input_frames completeness status notes ate rpe gt played traj_span
+  local seq_dir bag base_cfg cfg adaptive_csv launch_file tag start_time end_time elapsed exit_code traj_poses input_frames completeness status notes ate rpe gt played traj_span source_kind stats_file
   mkdir -p "$run_dir"
 
+  source_kind="$(normalize_source "$AQUATIC_SOURCE")" || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "invalid_AQUATIC_SOURCE_$AQUATIC_SOURCE"; return 0; }
   seq_dir="$(sequence_dir "$seq")" || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "missing_sequence_dir"; return 0; }
-  bag="$(bag_for_sequence "$seq_dir")"
-  [ -f "$bag" ] || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "missing_bag"; return 0; }
+  bag=""
+  if [ "$source_kind" = "rosbag" ]; then
+    bag="$(bag_for_sequence "$seq_dir")"
+    [ -f "$bag" ] || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "missing_bag"; return 0; }
+  else
+    [ -x "$IMAGE_PUBLISHER" ] || chmod +x "$IMAGE_PUBLISHER" >/dev/null 2>&1 || true
+    [ -d "$seq_dir/Stereo images/l1" ] || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "missing_stereo_images_l1"; return 0; }
+    [ -d "$seq_dir/Stereo images/r1" ] || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "missing_stereo_images_r1"; return 0; }
+  fi
 
   if [ "$sensor" = "mono" ]; then base_cfg="$AQUATIC_MONO_CONFIG"; else base_cfg="$AQUATIC_STEREO_CONFIG"; fi
   if [ ! -f "$base_cfg" ]; then
@@ -271,20 +307,38 @@ run_case() {
   tag="exp3_AquaticVision_${seq}_${sensor}_${mode}_r${run_id}"
   rm -f "$HOME/.ros/${tag}"*
 
-  log "[RUN] seq=$seq sensor=$sensor mode=$mode run=$run_id"
+  stats_file="$run_dir/input_source_stats.txt"
+  if [ "$source_kind" = "stereo_images" ]; then
+    if ! image_source_stats "$seq_dir" "$sensor" "$stats_file"; then
+      write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "image_source_stats_failed"
+      return 0
+    fi
+  fi
+
+  log "[RUN] seq=$seq sensor=$sensor mode=$mode run=$run_id source=$source_kind"
   start_time="$(date +%s)"
   set +e
   roslaunch "$launch_file" > "$run_dir/roslaunch.log" 2>&1 &
   local launch_pid=$!
   sleep "$STARTUP_WAIT"
-  local duration_args=()
-  if [ "${BAG_DURATION}" != "0" ]; then duration_args=(--duration "$BAG_DURATION"); fi
-  if [ "${RUN_TIMEOUT}" != "0" ]; then
-    timeout --preserve-status "$RUN_TIMEOUT" rosbag play --clock -q -s "$BAG_START" -r "$BAG_RATE" "${duration_args[@]}" "$bag" > "$run_dir/rosbag_play.log" 2>&1
-    exit_code=$?
+  if [ "$source_kind" = "rosbag" ]; then
+    local duration_args=()
+    if [ "${BAG_DURATION}" != "0" ]; then duration_args=(--duration "$BAG_DURATION"); fi
+    if [ "${RUN_TIMEOUT}" != "0" ]; then
+      timeout --preserve-status "$RUN_TIMEOUT" rosbag play --clock -q -s "$BAG_START" -r "$BAG_RATE" "${duration_args[@]}" "$bag" > "$run_dir/rosbag_play.log" 2>&1
+      exit_code=$?
+    else
+      rosbag play --clock -q -s "$BAG_START" -r "$BAG_RATE" "${duration_args[@]}" "$bag" > "$run_dir/rosbag_play.log" 2>&1
+      exit_code=$?
+    fi
   else
-    rosbag play --clock -q -s "$BAG_START" -r "$BAG_RATE" "${duration_args[@]}" "$bag" > "$run_dir/rosbag_play.log" 2>&1
-    exit_code=$?
+    if [ "${RUN_TIMEOUT}" != "0" ]; then
+      timeout --preserve-status "$RUN_TIMEOUT" python3 "$IMAGE_PUBLISHER" --sequence-dir "$seq_dir" --sensor "$sensor" --start "$BAG_START" --duration "$BAG_DURATION" --rate "$BAG_RATE" --max-frames "$MAX_FRAMES" > "$run_dir/image_publisher.log" 2>&1
+      exit_code=$?
+    else
+      python3 "$IMAGE_PUBLISHER" --sequence-dir "$seq_dir" --sensor "$sensor" --start "$BAG_START" --duration "$BAG_DURATION" --rate "$BAG_RATE" --max-frames "$MAX_FRAMES" > "$run_dir/image_publisher.log" 2>&1
+      exit_code=$?
+    fi
   fi
   timeout --preserve-status "$SAVE_TRAJ_TIMEOUT" rosservice call /orb_slam3/save_traj "$tag" > "$run_dir/save_traj.log" 2>&1
   kill "$launch_pid" >/dev/null 2>&1
@@ -295,7 +349,8 @@ run_case() {
 
   copy_saved_outputs "$tag" "$run_dir"
   traj_poses="$(count_lines "$run_dir/trajectory.txt")"
-  input_frames="$(python3 - "$bag" <<'PY'
+  if [ "$source_kind" = "rosbag" ]; then
+    input_frames="$(python3 - "$bag" <<'PY'
 import rosbag, sys
 bag=rosbag.Bag(sys.argv[1])
 topics=['/davis_left/image_raw']
@@ -304,7 +359,11 @@ bag.close()
 print(n)
 PY
 )"
-  played="$(played_duration_sec "$bag")"
+    played="$(played_duration_sec "$bag")"
+  else
+    input_frames="$(stat_value "$stats_file" selected_frames)"
+    played="$(stat_value "$stats_file" span_sec)"
+  fi
   traj_span="$(trajectory_span_sec "$run_dir/trajectory.txt")"
   completeness="$(python3 - "$traj_span" "$played" <<'PY'
 import sys
@@ -332,10 +391,15 @@ main() {
   log "AQUATIC_ROOT=$AQUATIC_ROOT"
   log "RUN_TAG=$RUN_TAG"
   log "RUNTIME_MODE=$RUNTIME_MODE"
+  log "AQUATIC_SOURCE=$AQUATIC_SOURCE"
   log "SEQUENCES=$SEQUENCES"
   log "SENSORS=$SENSORS"
   log "UWIDVO_MODES=$UWIDVO_MODES"
   log "RUNS_PER_CASE=$RUNS_PER_CASE"
+  log "BAG_START=$BAG_START"
+  log "BAG_DURATION=$BAG_DURATION"
+  log "BAG_RATE=$BAG_RATE"
+  log "MAX_FRAMES=$MAX_FRAMES"
 
   if [ -f /opt/ros/noetic/setup.bash ]; then source /opt/ros/noetic/setup.bash; fi
   if [ "$DO_BUILD" = "1" ]; then catkin build --cmake-args -DORB3_USE_INFOSEL=ON; fi

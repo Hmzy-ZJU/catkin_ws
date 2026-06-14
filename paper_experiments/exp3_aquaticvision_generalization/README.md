@@ -32,6 +32,12 @@ stereo
 ## Runtime Mode
 
 - ROS online
+- Default input source: `AQUATIC_SOURCE=stereo_images`
+  - Publishes the exported `Stereo images/l1`, `Stereo images/r1`, and `timestamp_pairs.txt` as ROS image topics.
+  - This follows the AquaticVision paper's visual-SLAM baseline input, where ORB-SLAM2 is tested with exported 30 Hz grayscale images.
+- Optional engineering check: `AQUATIC_SOURCE=rosbag`
+  - Replays the original rosbag image topics.
+  - This is useful for deployment-style checks, but it is not the recommended visual-SLAM comparison input for Exp. 3.
 
 ## Methods
 
@@ -93,6 +99,12 @@ Quick smoke test:
 
 ```bash
 cd ~/catkin_ws; RUNS_PER_CASE=1 BAG_DURATION=30 SEQUENCES="01" SENSORS="mono stereo" UWIDVO_MODES=ORB_SLAM3,IDVO bash paper_experiments/exp3_aquaticvision_generalization/run_exp3_aquaticvision_generalization.sh
+```
+
+Rosbag engineering check:
+
+```bash
+cd ~/catkin_ws; AQUATIC_SOURCE=rosbag RUNS_PER_CASE=1 BAG_DURATION=30 SEQUENCES="01" SENSORS="mono stereo" UWIDVO_MODES=ORB_SLAM3,IDVO bash paper_experiments/exp3_aquaticvision_generalization/run_exp3_aquaticvision_generalization.sh
 ```
 
 Full run:

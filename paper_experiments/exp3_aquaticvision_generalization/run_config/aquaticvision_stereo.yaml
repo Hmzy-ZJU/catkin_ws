@@ -17,7 +17,7 @@ Camera.p2: -1.214709038815e-03
 Camera.width: 346
 Camera.height: 260
 Camera.fps: 30
-Camera.RGB: 1
+Camera.RGB: 0
 Camera.bf: 39.43422891951775
 ThDepth: 40.0
 

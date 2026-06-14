@@ -1,0 +1,450 @@
+arXiv:2505.03448v2  [cs.RO]  5 Jun 2025
+AquaticVision: Benchmarking Visual SLAM in Underwater
+Environment with Events and Frames
+Yifan Peng∗, Yuze Hong ∗, Ziyang Hong, Apple Pui-Yi Chui, Junfeng Wu
+Abstract— Many underwater applications, such as offshore
+asset inspections, rely on visual inspection and detailed 3D
+reconstruction. Recent advancements in underwater visual
+SLAM systems for aquatic environments have garnered signif-
+icant attention in marine robotics research. However, existing
+underwater visual SLAM datasets often lack groundtruth
+trajectory data, making it difficult to objectively compare the
+performance of different SLAM algorithms based solely on
+qualitative results or COLMAP reconstruction. In this paper,
+we present a novel underwater dataset that includes ground
+truth trajectory data obtained using a motion capture system.
+Additionally, for the first time, we release visual data that
+includes both events and frames for benchmarking underwater
+visual positioning. By providing event camera data, we aim
+to facilitate the development of more robust and advanced
+underwater visual SLAM algorithms. The use of event cameras
+can help mitigate challenges posed by extremely low light or
+hazy underwater conditions. The webpage of our dataset is
+https://sites.google.com/view/aquaticvision-lias.
+I. INTRODUCTION
+With the deepening exploration of oceans, underwater
+robotics applications have gained significant prominence.
+Visual SLAM technology provides robots with reliable lo-
+calization and environmental perception capabilities in GPS-
+denied underwater environments at relatively low cost, serv-
+ing as a crucial foundation for intelligent autonomous under-
+water robotics. Unlike terrestrial environments, visual SLAM
+in underwater scenarios faces substantially more challenges,
+including unpredictable lighting conditions, variable water
+clarity, and abundant unstructured textures. Consequently,
+conventional visual cameras alone cannot adequately address
+underwater challenges, prompting researchers to explore
+novel sensor technologies to enhance the robustness and
+accuracy of underwater visual SLAM systems.
+In recent years, event camera has attracted considerable
+academic attention as bio-inspired visual sensors due to
+their high dynamic range (HDR), low latency, and high
+temporal resolution. Unlike traditional frame-based cameras
+that capture entire scenes at fixed frame rates, the event
+camera asynchronously records intensity changes at each
+pixel, generating data only when brightness variations exceed
+predetermined thresholds. This operating mechanism renders
+*Equal contribution
+This work was supported in part by NSFC under Grant 62273288 and
+in part by the Shenzhen Science and Technology Program under Grant
+JCYJ20220818103000001.
+1Yifan Peng, Yuze Hong, Ziyang Hong, Junfeng Wu are with School of
+Data Science, The Chinese University of Hong Kong, Shenzhen, P. R. China,
+Corresponding author: Ziyang Hong, Email: hongziyang@cuhk.edu.cn
+2Apple Pui-Yi Chui is with School of Life Sciences, The Chinese
+University of Hong Kong, Hongkong
+event camera data more robust in underwater environments,
+opening new possibilities for underwater visual SLAM to
+some extent. The complementary strengths of event camera
+and traditional camera may offer a meaningful pathway for
+developing more robust underwater visual SLAM systems.
+Most existing underwater datasets focus on deep learning
+tasks such as semantic segmentation and object detection, as
+in [1] [2]. Additionally, [3] provides a dataset for underwater
+color correction and depth estimation. SQUID [4] is a dataset
+for 3D scene reconstruction. Currently, there are few datasets
+available for validating underwater visual SLAM, with the
+dataset released in [5] usable for VIO system validation,
+but without providing groundtruth. Recently, the FLSea
+dataset proposed in [6] contains stereo images and IMU
+data collected in real underwater environments and provides
+groundtruth, making it suitable for validating both SLAM
+and depth estimation algorithms. However, as mentioned in
+[6], the pose groundtruth in FLSea is not captured using mo-
+tion capture systems and may contain slight imperfections.
+To provide more reliable groundtruth for underwater visual
+SLAM algorithms and to facilitate further advancements
+in this field, this paper introduces the first underwater
+dataset that simultaneously incorporates event camera
+data, traditional camera frames, and IMU measurements.
+Furthermore, we release groundtruth trajectories tracked
+by a motion capture system, enabling researchers to val-
+idate the localization accuracy and performance of their
+algorithms in underwater environments.
+II. O VERVIEW
+A. Sensors setup
+The DA VIS346 Stereo Kit serves as our comprehen-
+sive data acquisition system. This sensor integrates dual
+DA VIS346-Mono event cameras capable of simultaneously
+capturing event streams and grayscale images. MPU-6500
+IMU is embedded within the sensor, providing high-precision
+motion sensing capabilities with 3-axis gyroscope and 3-axis
+accelerometer measurements.
+The resulting dataset features high-temporal-resolution
+stereo event data sampled at 1000 Hz, complemented by
+stereo grayscale frames captured at 20 Hz with a spatial
+resolution of 346 × 260 pixels. Additionally, the system
+incorporates IMU data synchronized at 200 Hz. Times-
+tamps between all sensors are synchronized in hardware.
+Besides, for all data sequences published in our dataset, the
+groundtruth trajectories are aquired by using CHINGMU-U4
+motion capture system. It provides 6D pose measurements
+of a specific coordinates frame, which is defined by a set
+Presented at the 2025 IEEE ICRA Workshop on Field Robotics
+
+Fig. 1: Experimental scenario and underwater data collection platform. IMU coordinates align with camera one.
+of marker attached on the top of data collection platform.
+The pose measurements are recorded at a rate of 120 Hz.
+Table I summarizes all sensors used and their data publishing
+frequency.
+TABLE I: Sensors used in the experiments
+Sensor Type Frequency
+Event camera DA VIS346 1000Hz
+Frame camera DA VIS346 20Hz/30Hz
+IMU MPU-6500 200Hz/1000Hz
+Motion capture CHINGMU-U4 120Hz
+B. Experimental Scenario
+The experimental scene is a pool with dimensions of 4 × 3
+× 2 meters, with a water depth of approximately 1 meter. The
+pool bottom is covered with a real seabed beach image as
+background, and multiple coral models are placed to simulate
+the underwater environment to the greatest extent possible.
+Vertically installed in the data collection platform with its
+z-axis oriented toward the pool bottom, the DA VIS346 event
+camera captures data as the platform navigates within a 3
+× 2 meter planar area. Four motion capture cameras are set
+up above the pool to obtain groundtruth. Fig. 1 illustrates
+the experimental scenario and the data collection platform.
+It should be noted that the motion capture equipments are
+not installed underwater, which is done to expand the robot’s
+range of motion. The collection platform is actually floating
+on the water surface, with markers installed above it, higher
+than the water level.
+Based on the visual feature characteristics of the scenes,
+we divide the collected 9 data sequences into two categories:
+easy and hard. Sequences 01 through 05 belong to the easy
+category, featuring clear visual characteristics that simulate
+underwater environments with good lighting and water qual-
+ity. Sequences 06 through 09 belong to the hard category,
+including three unique underwater environmental challenges:
+darkness, HDR (High Dynamic Range), and blur. TABLE
+II shows the characteristics of all nine data sequences. The
+with board or no board suffix indicates whether a calibration
+board is present underwater.
+C. Calibration
+The DA VIS integrates both conventional imaging and
+event sensing capabilities on a unified pixel array, allowing
+for a streamlined calibration workflow. This architectural ad-
+vantage enables researchers to employ established calibration
+frameworks like Kalibr [7] on the standard image output,
+with the resulting calibration parameters being directly trans-
+ferable to the event component without requiring separate
+calibration procedures. The extrinsic parameters between the
+camera and IMU were calibrated by using Kalibr [7].
+D. Data F ormat
+The proposed dataset is orgnized as follow:
+dataset name
+calibration
+cam0 pinhole.yaml
+cam1 pinhole.yaml
+davis imucam underwater.yaml
+data sequences
+01 Scan with board
+...
+Presented at the 2025 IEEE ICRA Workshop on Field Robotics
+
+TABLE II: Data sequences characteristics
+Sequence Name Category Duration Description
+01 Scan with board Easy 93.32s Clear water, corals evenly distributed, trajectory covers underwater area
+02 Cross1 with board Easy 109.00s Clear water, corals centrally distributed, cross-pattern trajectory
+03 Cross2 no board Easy 68.03s Clear water, corals evenly distributed, cross-pattern trajectory
+04 Loop1 with board Easy 75.70s Clear water, corals evenly distributed, loop-shaped trajectory
+05 Loop2 no board Easy 59.92s Clear water, corals centrally distributed, loop-shaped trajectory
+06 Dark1 with board Hard 75.04s Clear water, low-light condition
+07 Dark2 with board Hard 74.30s Clear water, low-light condition
+08 HDR Hard 97.00s High dynamic range lighting conditions creating challenging exposure variations
+09 Blur Hard 133.47s Water turbidity affecting image clarity and feature detection
+TABLE III: ATE OF SLAM SYSTEMS ON SAMPLE SEQUENCES [m]
+Method S01 S02 S03 S04 S05 S06 S07 S08 S09
+VINS-Stereo 0.0573 0.0616 0.0428 0.0489 0.0907 1.1629 0.0698 failed 0.0507
+ORB-SLAM2 0.4231 0.1134 0.0864 0.4267 0.1712 failed failed 0.1763 0.1546
+ESVO2 failed failed failed failed failed failed failed failed failed
+09 Blur
+In the calibration folder, there are three calibration files in
+Y AML format, which contain the intrinsic parameters of the
+left camera (cam0) and right camera (cam1), as well as the
+extrinsic parameters between the cameras and the IMU. The
+data sequences folder contains data for 9 sequences.
+Each sequence provides sensor data, groundtruth, and
+grayscale images. Event, image, and IMU data are provided
+in the rosbag format, including two types of rosbags: one
+with images at 30Hz and IMU at 1000Hz, and another with
+images at 20Hz and IMU at 200Hz. Users can choose the
+appropriate rosbag for their algorithms and perform down-
+sampling operations when needed. The baseline trajectory
+is provided in the CSV file. Additionally, we have released
+a groundtruth file in TUM format to facilitate evaluation
+based on the evo tool. Furthermore, the left and right camera
+grayscale images at 30Hz frame rate have been extracted and
+stored separately in the l1 and r1 folders, accompanied by a
+timestamp alignment file. The data sequence is orgnized as
+follow:
+id sequence name
+data rosbag
+name imu 1000hz images 30hz.bag
+name imu 200hz images 20hz.bag
+groundtruth
+gt.csv
+gt.tum
+Stereo images
+l1
+r1
+timestamp pairs.txt
+E. Baseline trajectory using visual SLAM
+Various mainstream SLAM systems are tested across nine
+sequences from the proposed dataset, with detailed charac-
+teristics presented in Table II. To assess performance, we
+employ the Absolute Trajectory Error (ATE) as our primary
+metric. For consistent comparison, we utilize the evo tool to
+align each estimated trajectory with its corresponding ground
+truth, thereby calculating precise ATE measurements. The
+quantitative results are shown in Table III.
+To evaluate the performance of frame-based visual SLAM
+in underwater environments, Vins-Stereo-fusion [8] and
+ORB-SLAM2 [9] are used for testing. The testing of Vins is
+conducted using rosbags with IMU data at 200Hz and images
+at 20Hz, while the testing of ORB-SLAM2 utilizes grayscale
+images at 30Hz. It should be specifically noted that the
+purpose of selecting ORB-SLAM2 for testing is to assess the
+performance difference between visual odometry (VO) and
+visual-inertial odometry (VIO) on the proposed underwater
+dataset. The state-of-the-art event-based SLAM algorithm,
+ESVO2 [10], is also tested to evaluate the performance of
+event camera in challenging underwater environments.
+Fig. 2: Estimated and groundtruth (GT) trajectories of 2
+sample sequences.
+1) Frame-based visual SLAM:
+As shown in Table III, test results based on the easy
+class sequences (S01-S05) indicate that the pose estimation
+accuracy of the VIO system (VINS-Stereo) is significantly
+higher than that of the VO system (ORB-SLAM2). This is
+because the presence of water waves and buoyancy causes
+high-frequency rapid jitter of the data collection platform
+during turns. On one hand, this violates the constant velocity
+Presented at the 2025 IEEE ICRA Workshop on Field Robotics
+
+Fig. 3: Comparison of grayscale images and their corresponding Time Surface images under different underwater
+environmental conditions.
+motion model assumption relied upon by ORB-SLAM2,
+making pose estimation no longer accurate. On the other
+hand, under the premise of similar features in underwater
+environment and lower camera resolution, small-range rapid
+movements can cause degradation in visual pose estimation.
+In fact, based on what was mentioned in SVin2 [11], this
+paper also applied CLAHE histogram equalization [12] to
+enhance visual features in the input images, but still did not
+achieve better results. VINS-Stereo, with the assistance of
+IMU data, can effectively compensate for the deficiencies
+in visual information. The IMU can provide high-frequency
+attitude and acceleration measurements, maintaining accurate
+pose estimation in the short term even when visual features
+are scarce. For data sequences with smoother motion and
+without rapid turns (S03), both ORB-SLAM2 and VINS can
+run relatively well, as shown in Fig. 2(a).
+In experiments based on hard class sequences, both Vins-
+Stereo and ORB-SLAM2 exhibited different degrees of fail-
+ure. Under low-light conditions (S06-S07), ORB-SLAM2
+struggled to extract effective ORB feature points, making it
+impossible to estimate trajectories. VINS-Stereo, on the other
+hand, uses a combination of Shi-Tomasi corner detection
+with optical flow tracking for matching, which can detect
+more reliable corners in low-contrast images, as shown in
+Fig. 2(b). Additionally, optical flow tracking utilizes inter-
+frame continuity rather than re-detecting and matching fea-
+tures, reducing dependency on single-frame image quality,
+thus enabling more continuous trajectories. However, in HDR
+environment (S08), only a small area is illuminated, causing
+the scene to be in a state of constant abrupt changes, which
+can cause optical flow tracking to fail and affect VINS’s
+performance. For blurry environment (S09), although ORB-
+SLAM2 had positioning errors of around 0.15m, it could not
+operate stably throughout the entire sequence, experiencing
+tracking loss during blurry frames. It was only through its
+effective relocalization capability that it could obtain pose
+estimation results for clear frames.
+To sum up, IMU data is essential for the application of
+visual SLAM system in underwater scenarios. Meanwhile,
+to ensure the performance of underwater visual odometry, it
+is also important to extract more robust visual feature points.
+2) Event-based visual SLAM:
+As shown in Table III, ESVO2 failed on all data sequences.
+The main reasons for ESVO2’s failure can be attributed
+to: ESVO2 requires extremely high calibration precision,
+especially when distortion correction is not accurate enough,
+which significantly affects the system’s precision. Although
+the Kalibr calibration tool used in this paper can effectively
+obtain intrinsic and extrinsic parameters on land, it does
+not include specific optimizations for underwater calibration.
+Underwater, light passes through three layers of refraction
+and reflection - water, transparent panel, and air - which
+to some extent affects the accuracy of camera calibration.
+Additionally, due to the low resolution of the DA VIS346
+camera and our short stereo camera baseline, there were
+negative impacts on depth estimation results and overall
+accuracy. Finally, ESVO2 demands robust initialization with
+high-quality reconstruction, however, the cluttered underwa-
+ter environment textures often lead to reconstruction failures,
+affecting system operation. It should be noted that this does
+not mean ESVO2 lacks good pose estimation capability, but
+only indicates that it cannot effectively address challenges
+in underwater scenes under this paper’s experimental setup.
+In fact, ESVO2 has demonstrated excellent performance on
+land when using the long-baseline, high-resolution solution.
+F . Event Imaging Under Adverse Conditions
+Event cameras have unique advantages in visual repre-
+sentation of complex underwater scenes. Time Surface (TS)
+is a commonly used event representation method, with the
+following principle:
+Presented at the 2025 IEEE ICRA Workshop on Field Robotics
+
+T (x, t) .= exp
+
+− t − tlast(x)
+η
+
+, (1)
+where tlast is the timestamp of the last event at each pixel
+coordinate x = (u, v)⊤, and η is a parameter controlling the
+decay rate. Time Surface uses an exponential decay kernel
+to emphasize recent events while attenuating past events.
+Fig. 4: Details comparison of Time Surface image and
+original grayscale imaging features in low-light underwater
+environment (Sequence 06).
+The dataset published in this paper includes four scenarios:
+clear water, low light, HDR, and turbid water. Fig. 3 (a)
+shows the clear water condition, where the corresponding
+Time Surface effectively reflects the environmental texture
+features. For coral regions with low contrast, Time Surface
+can also represent their surface textures and contours. A
+detailed comparison of Time Surface images and original
+grayscale imaging features in low-light underwater envi-
+ronments is shown in Fig. 4. Fig. 3 (b) and (c) represent
+challenging lighting conditions. Evidently, Time Surfaces
+generated from event data demonstrate strong robustness
+to lighting conditions, effectively presenting environmental
+textures in low-light or HDR scenes.
+Failure case: As shown in Fig. 3(d), Time Surfaces fail
+when water becomes turbid. This is because numerous
+impurities obscure environmental details, preventing event
+cameras from properly capturing changes in illumination.
+This phenomenon indicates that event cameras do not nec-
+essarily perform better than conventional cameras in certain
+scenarios.
+Going beyond TS image: While Time Surface imaging
+effectively reveals features in clear and low-light conditions,
+more robust event representations are needed for challenging
+underwater environments. To be more specific, Motion-
+compensated Event Frame method [13] [14] that warps event
+data to a reference frame using motion models can signifi-
+cantly reduce the influence of suspended particles by aligning
+events from real objects while dispersing random noise.
+Event Packet representations [15] preserves temporal pre-
+cision by aggregating events within time windows, enabling
+batch operations that better distinguish between consistent
+features and sporadic noise in turbid waters. V oxel Grid [16]
+approach encodes events into 3D space-time tensor repre-
+sentations, allowing for structured spatial and temporal in-
+tegration that enhances signal-to-noise ratio in environments
+with varying visibility. By combining the advantages of these
+methods, adaptive systems can be developed for different
+underwater conditions, enabling more reliable perception and
+localization in challenging underwater environments.
+III. CONCLUSION
+This paper presents an underwater dataset containing
+event, frame, and IMU data, along with groundtruth tra-
+jectories for evaluation purpose. The dataset is categorized
+into ”easy” and ”hard” classes, where sequences in the easy
+class were collected under good water quality and lighting
+conditions, while sequences in the hard class include special
+underwater conditions such as low light, high dynamic range
+(HDR), and turbidity. Furthermore, based on this dataset,
+we evaluated mainstream frame-based visual SLAM algo-
+rithms and a state-of-the-art event-based SLAM algorithm
+in underwater scenarios. The analysis of advantages and
+limitations of event camera in underwater environments
+points to potential future directions for underwater SLAM
+research. In the future, we will continue to improve and up-
+date this dataset, providing more realistic underwater scenes
+and more accurate calibration data, striving to contribute a
+comprehensive benchmark for underwater robotics research.
+REFERENCES
+[1] M. J. Islam, C. Edge, Y . Xiao, P. Luo, M. Mehtaz, C. Morse, S. S.
+Enan, and J. Sattar, “Semantic segmentation of underwater imagery:
+Dataset and benchmark,” in 2020 IEEE/RSJ International Conference
+on Intelligent Robots and Systems (IROS) , pp. 1769–1776, IEEE, 2020.
+[2] M. Pedersen, J. Bruslund Haurum, R. Gade, and T. B. Moeslund,
+“Detection of marine animals in a new underwater dataset with varying
+visibility,” in Proceedings of the IEEE/CVF conference on computer
+vision and pattern recognition workshops , pp. 18–26, 2019.
+[3] K. A. Skinner, J. Zhang, E. A. Olson, and M. Johnson-Roberson,
+“Uwstereonet: Unsupervised learning for depth estimation and color
+correction of underwater stereo imagery,” in 2019 International Con-
+ference on Robotics and Automation (ICRA) , pp. 7947–7954, 2019.
+[4] D. Berman, D. Levy, S. Avidan, and T. Treibitz, “Underwater sin-
+gle image color restoration using haze-lines and a new quantitative
+dataset,” IEEE transactions on pattern analysis and machine intelli-
+gence, vol. 43, no. 8, pp. 2822–2837, 2020.
+[5] S. Rahman, A. Q. Li, and I. Rekleitis, “Sonar visual inertial slam
+of underwater structures,” in 2018 IEEE International Conference on
+Robotics and Automation (ICRA) , pp. 5190–5196, IEEE, 2018.
+[6] Y . Randall and T. Treibitz, “Flsea: Underwater visual-inertial
+and stereo-vision forward-looking datasets,” arXiv preprint
+arXiv:2302.12772, 2023.
+[7] P. Furgale, J. Rehder, and R. Siegwart, “Unified temporal and spatial
+calibration for multi-sensor systems,” in 2013 IEEE/RSJ International
+Conference on Intelligent Robots and Systems , pp. 1280–1286, IEEE,
+2013.
+[8] T. Qin, J. Pan, S. Cao, and S. Shen, “A general optimization-based
+framework for local odometry estimation with multiple sensors,” 2019.
+[9] R. Mur-Artal and J. D. Tard ´os, “Orb-slam2: An open-source slam
+system for monocular, stereo, and rgb-d cameras,” IEEE transactions
+on robotics, vol. 33, no. 5, pp. 1255–1262, 2017.
+Presented at the 2025 IEEE ICRA Workshop on Field Robotics
+
+[10] J. Niu, S. Zhong, X. Lu, S. Shen, G. Gallego, and Y . Zhou, “Esvo2:
+Direct visual-inertial odometry with stereo event cameras,” IEEE
+Transactions on Robotics , vol. 41, pp. 2164–2183, 2025.
+[11] S. Rahman, A. Q. Li, and I. Rekleitis, “Svin2: An underwater
+slam system using sonar, visual, inertial, and depth sensor,” in 2019
+IEEE/RSJ International Conference on Intelligent Robots and Systems
+(IROS), pp. 1861–1868, 2019.
+[12] S. M. Pizer, E. P. Amburn, J. D. Austin, R. Cromartie, A. Geselowitz,
+T. Greer, B. ter Haar Romeny, J. B. Zimmerman, and K. Zuiderveld,
+“Adaptive histogram equalization and its variations,” Computer vision,
+graphics, and image processing , vol. 39, no. 3, pp. 355–368, 1987.
+[13] G. Gallego and D. Scaramuzza, “Accurate angular velocity estimation
+with an event camera,” IEEE Robotics and Automation Letters , vol. 2,
+no. 2, pp. 632–639, 2017.
+[14] G. Gallego, H. Rebecq, and D. Scaramuzza, “A unifying contrast
+maximization framework for event cameras, with applications to mo-
+tion, depth, and optical flow estimation,” in Proceedings of the IEEE
+conference on computer vision and pattern recognition , pp. 3867–
+3876, 2018.
+[15] G. Gallego, T. Delbr ¨uck, G. Orchard, C. Bartolozzi, B. Taba, A. Censi,
+S. Leutenegger, A. J. Davison, J. Conradt, K. Daniilidis, and D. Scara-
+muzza, “Event-based vision: A survey,” IEEE Transactions on Pattern
+Analysis and Machine Intelligence , vol. 44, no. 1, pp. 154–180, 2022.
+[16] K. Huang, S. Zhang, J. Zhang, and D. Tao, “Event-based simultaneous
+localization and mapping: A comprehensive survey,” arXiv preprint
+arXiv:2304.09793, 2023.
+Presented at the 2025 IEEE ICRA Workshop on Field Robotics
