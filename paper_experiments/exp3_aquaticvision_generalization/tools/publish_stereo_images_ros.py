@@ -201,6 +201,8 @@ def main():
     parser.add_argument("--duration", type=float, default=0.0)
     parser.add_argument("--rate", type=float, default=1.0)
     parser.add_argument("--max-frames", type=int, default=0)
+    parser.add_argument("--warmup-count", type=int, default=15)
+    parser.add_argument("--warmup-sleep", type=float, default=0.02)
     parser.add_argument("--left-topic", default="/davis_left/image_raw")
     parser.add_argument("--right-topic", default="/davis_right/image_raw")
     parser.add_argument("--left-frame-id", default="davis_left")
@@ -231,6 +233,21 @@ def main():
         # this node is the /clock publisher, so simulated time cannot advance until
         # the first Clock message is published.
         time.sleep(0.5)
+        first_stamp, first_left, first_right = pairs[0]
+        first_ros_stamp = rospy.Time.from_sec(first_stamp)
+        first_clock = Clock()
+        first_clock.clock = first_ros_stamp
+        first_left_msg = image_msg(first_left, first_stamp, args.left_frame_id)
+        first_right_msg = image_msg(first_right, first_stamp, args.right_frame_id) if right_pub is not None else None
+        for _ in range(max(0, args.warmup_count)):
+            if rospy.is_shutdown():
+                break
+            clock_pub.publish(first_clock)
+            left_pub.publish(first_left_msg)
+            if right_pub is not None and first_right_msg is not None:
+                right_pub.publish(first_right_msg)
+            time.sleep(max(0.0, args.warmup_sleep))
+
         rate_scale = args.rate if args.rate > 0 else 1.0
         wall_prev = time.monotonic()
         stamp_prev = pairs[0][0]

@@ -333,10 +333,10 @@ run_case() {
     fi
   else
     if [ "${RUN_TIMEOUT}" != "0" ]; then
-      timeout --preserve-status "$RUN_TIMEOUT" python3 "$IMAGE_PUBLISHER" --sequence-dir "$seq_dir" --sensor "$sensor" --start "$BAG_START" --duration "$BAG_DURATION" --rate "$BAG_RATE" --max-frames "$MAX_FRAMES" > "$run_dir/image_publisher.log" 2>&1
+      timeout --preserve-status "$RUN_TIMEOUT" python3 "$IMAGE_PUBLISHER" --sequence-dir "$seq_dir" --sensor "$sensor" --start "$BAG_START" --duration "$BAG_DURATION" --rate "$BAG_RATE" --max-frames "$MAX_FRAMES" --warmup-count "$IMAGE_WARMUP_COUNT" --warmup-sleep "$IMAGE_WARMUP_SLEEP" > "$run_dir/image_publisher.log" 2>&1
       exit_code=$?
     else
-      python3 "$IMAGE_PUBLISHER" --sequence-dir "$seq_dir" --sensor "$sensor" --start "$BAG_START" --duration "$BAG_DURATION" --rate "$BAG_RATE" --max-frames "$MAX_FRAMES" > "$run_dir/image_publisher.log" 2>&1
+      python3 "$IMAGE_PUBLISHER" --sequence-dir "$seq_dir" --sensor "$sensor" --start "$BAG_START" --duration "$BAG_DURATION" --rate "$BAG_RATE" --max-frames "$MAX_FRAMES" --warmup-count "$IMAGE_WARMUP_COUNT" --warmup-sleep "$IMAGE_WARMUP_SLEEP" > "$run_dir/image_publisher.log" 2>&1
       exit_code=$?
     fi
   fi
@@ -379,7 +379,17 @@ PY
   rpe="$(extract_metric "$run_dir/evo/evo_rpe.txt")"
 
   status="PASS"; notes="ok"
-  if [ "$traj_poses" -lt "$MIN_TRAJECTORY_POSES" ]; then status="VALIDATION_FAIL"; notes="too_few_trajectory_poses"; elif [ "$exit_code" -ne 0 ]; then status="PASS_WITH_PLAY_EXIT_${exit_code}"; notes="rosbag_play_exit_${exit_code}"; fi
+  if [ "$traj_poses" -lt "$MIN_TRAJECTORY_POSES" ]; then
+    status="VALIDATION_FAIL"; notes="too_few_trajectory_poses"
+  elif python3 - "$completeness" "$MIN_COMPLETENESS_PERCENT" <<'PY'
+import sys
+raise SystemExit(0 if float(sys.argv[1]) < float(sys.argv[2]) else 1)
+PY
+  then
+    status="VALIDATION_FAIL"; notes="low_completeness"
+  elif [ "$exit_code" -ne 0 ]; then
+    status="PASS_WITH_PLAY_EXIT_${exit_code}"; notes="rosbag_play_exit_${exit_code}"
+  fi
 
   write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "$status" "$ate" "$rpe" "$completeness" "$traj_poses" "$input_frames" "$elapsed" "$run_dir" "$notes"
 }
@@ -400,6 +410,9 @@ main() {
   log "BAG_DURATION=$BAG_DURATION"
   log "BAG_RATE=$BAG_RATE"
   log "MAX_FRAMES=$MAX_FRAMES"
+  log "MIN_COMPLETENESS_PERCENT=$MIN_COMPLETENESS_PERCENT"
+  log "IMAGE_WARMUP_COUNT=$IMAGE_WARMUP_COUNT"
+  log "IMAGE_WARMUP_SLEEP=$IMAGE_WARMUP_SLEEP"
 
   if [ -f /opt/ros/noetic/setup.bash ]; then source /opt/ros/noetic/setup.bash; fi
   if [ "$DO_BUILD" = "1" ]; then catkin build --cmake-args -DORB3_USE_INFOSEL=ON; fi
