@@ -76,8 +76,8 @@ bool InfoKFPolicy::AllowNewKF(
         std::min(1.0, static_cast<double>(n_matches_curr) / static_cast<double>(nref))
     );
 
-    // ---- 3) 瀵圭О淇℃伅闃堝€?T_eff(r) = clip( T0 * (1 + alpha*(1-r)), [Tmin, Tmax] ) ----
-    // 鍏朵腑 T0 = allowBitsDrop 鏄綘瑕佷富瑕佽皟鑺傜殑鈥滀俊鎭彉鍖栧蹇嶅害鈥?    double Teff = params.allowBitsDrop * (1.0 - params.dynAlpha * (1.0 - r));
+    // Effective information-change threshold.
+    double Teff = params.allowBitsDrop * (1.0 - params.dynAlpha * (1.0 - r));
     Teff = std::max(params.dynTauMin, std::min(params.dynTauMax, Teff));
 
     // ---- 4) 绱/骞虫粦淇℃伅涓嬮檷 D_t = 蟻 D_{t-1} + min(0, 螖E_t) ----
