@@ -4251,11 +4251,75 @@ bool Tracking::NeedNewKeyFrame()
     else
         c4=false;
 
-    if(((c1a||c1b||c1c) && c2)||c3 ||c4)
+    const bool orbWantsNewKF = (((c1a||c1b||c1c) && c2)||c3 ||c4);
+
+#ifdef ORB3_USE_INFOSEL
+    bool infoGateComputed = false;
+    bool infoWantsNewKF = true;
+    bool infoReferenceReady = false;
+    InfoKFParams frameInfoKFParams = GetCurrentInfoKFParams();
+    const auto idkdStart = std::chrono::steady_clock::now();
+    if(IsAdaptiveExecutionEnabled() &&
+       mAdaptiveConfig.enable_adaptive_idvo &&
+       mAdaptiveConfig.policy_type == AdaptivePolicyType::RuleBased &&
+       mAdaptiveStateValid)
     {
+        UpdateAdaptiveParamsFromState(mAdaptiveLastState);
+        frameInfoKFParams = GetCurrentInfoKFParams();
+    }
+    if(frameInfoKFParams.use && mCurrentFrame.HasPose() &&
+       IsInfoModuleRuntimeReady())
+    {
+        std::vector<int> validIndices;
+        validIndices.reserve(mCurrentFrame.N);
+        for(int i = 0; i < mCurrentFrame.N; ++i)
+        {
+            if(mCurrentFrame.mvpMapPoints[i] && !mCurrentFrame.mvpMapPoints[i]->isBad())
+                validIndices.push_back(i);
+        }
+
+        if(!validIndices.empty())
+        {
+            int n_matches_curr = static_cast<int>(validIndices.size());
+            infoReferenceReady = mInfoKFState.initialized;
+
+            const auto fimStart = std::chrono::steady_clock::now();
+            Eigen::Matrix<double,6,6> H_curr =
+                InfoGain::ComputePoseInformation(mCurrentFrame, validIndices, frameInfoKFParams.lambdaMean);
+            mAdaptiveFimTimeMs += std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
+                std::chrono::steady_clock::now() - fimStart).count();
+
+            mInfoKFState.framesSinceRef++;
+            infoWantsNewKF = InfoKFPolicy::AllowNewKF(H_curr, n_matches_curr, mInfoKFState, frameInfoKFParams);
+            infoGateComputed = true;
+        }
+    }
+    mAdaptiveIdkdTimeMs += std::chrono::duration_cast<std::chrono::duration<double, std::milli> >(
+        std::chrono::steady_clock::now() - idkdStart).count();
+
+    const bool infoRequestsNewKF =
+        infoGateComputed && infoReferenceReady && infoWantsNewKF && (mnMatchesInliers > 15);
+
+    if(orbWantsNewKF || infoRequestsNewKF)
+#else
+    if(orbWantsNewKF)
+#endif
+    {
+        // If ORB-SLAM3 requests a keyframe, IDKD may reject redundant
+        // candidates. IDKD-triggered keyframes enter this block via
+        // infoRequestsNewKF.
+#ifdef ORB3_USE_INFOSEL
+        if(orbWantsNewKF && infoGateComputed && !infoWantsNewKF)
+        {
+            if(frameInfoKFParams.verbose)
+                std::cout << "[Tracking] KF rejected by info gating" << std::endl;
+            return false;
+        }
+#endif
+
         // If the mapping accepts keyframes, insert keyframe.
         // Otherwise send a signal to interrupt BA
-        #ifdef ORB3_USE_INFOSEL
+        #if 0
         const auto idkdStart = std::chrono::steady_clock::now();
         // === 信息门控：若启用，在批准新KF之前计算当前帧 Fisher 信息 ===
         if(IsAdaptiveExecutionEnabled() &&
