@@ -184,7 +184,10 @@ def main():
     right_pub = rospy.Publisher(args.right_topic, Image, queue_size=5) if args.sensor == "stereo" else None
     clock_pub = rospy.Publisher("/clock", Clock, queue_size=10)
 
-    rospy.sleep(0.5)
+    # Do not use rospy.sleep() here. Exp.3 runs with /use_sim_time=true and
+    # this node is the /clock publisher, so simulated time cannot advance until
+    # the first Clock message is published.
+    time.sleep(0.5)
     rate_scale = args.rate if args.rate > 0 else 1.0
     wall_prev = time.monotonic()
     stamp_prev = pairs[0][0]
