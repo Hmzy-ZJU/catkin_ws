@@ -4051,8 +4051,14 @@ bool Tracking::TrackLocalMap()
         mAdaptiveStateValid = true;
     }
 #endif
+#ifdef ORB3_USE_INFOSEL
+    if(mInfoSelParams.verbose || mInfoKFParams.verbose)
+#endif
+    {
     std::cout << "[TrackLocalMap] Frame " << mCurrentFrame.mnId
             << " 有效匹配点数: " << mnMatchesInliers << std::endl;
+
+    }
 
     if(mCurrentFrame.mnId<mnLastRelocFrameId+mMaxFrames && mnMatchesInliers<50)
         return false;
@@ -4066,10 +4072,15 @@ bool Tracking::TrackLocalMap()
         const int minInliers = bImuTrackingReady ? 15 : mMinTrackLocalMapInliersBeforeImuInit;
         if(mnMatchesInliers<minInliers)
         {
-            cout << "TrackLocalMap fail: IMU_MONOCULAR inliers=" << mnMatchesInliers
-                 << ", min_inliers=" << minInliers
-                 << ", imu_initialized=" << mpAtlas->isImuInitialized()
-                 << ", imu_tracking_ready=" << bImuTrackingReady << endl;
+#ifdef ORB3_USE_INFOSEL
+            if(mInfoSelParams.verbose || mInfoKFParams.verbose)
+#endif
+            {
+                cout << "TrackLocalMap fail: IMU_MONOCULAR inliers=" << mnMatchesInliers
+                     << ", min_inliers=" << minInliers
+                     << ", imu_initialized=" << mpAtlas->isImuInitialized()
+                     << ", imu_tracking_ready=" << bImuTrackingReady << endl;
+            }
             return false;
         }
         else
