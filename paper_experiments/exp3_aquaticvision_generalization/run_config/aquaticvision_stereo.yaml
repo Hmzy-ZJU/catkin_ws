@@ -40,7 +40,7 @@ Viewer.ViewpointF: 500.0
 
 # UW-IDVO Exp.3 lightweight generalization parameters.
 InfoSelector.Enable: 1
-InfoSelector.TopK: 110
+InfoSelector.TopK: 120
 InfoSelector.UseUniform: 1
 InfoSelector.w_uniform: 0.12
 InfoSelector.MinPxDist: 7
@@ -49,7 +49,7 @@ InfoSelector.StereoSafeKeep: 0
 
 InfoSelector.Greedy: 0
 InfoKF.Use: 1
-InfoKF.AllowBitsDrop: 1.5
+InfoKF.AllowBitsDrop: 1.8
 InfoKF.LambdaMean: 1.0e-3
 InfoKF.Dyn.Alpha: 0.25
 InfoKF.Dyn.Beta: 0.0
