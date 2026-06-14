@@ -4506,6 +4506,7 @@ void Tracking::LoadInfoParams(cv::FileStorage& fSettings)
         hasNode("InfoSelector.UseUniform") ||
         hasNode("InfoSelector.LambdaInit") ||
         hasNode("InfoSelector.StereoSafeKeep") ||
+        hasNode("InfoSelector.Greedy") ||
         hasNode("InfoSelector.Verbose") ||
         hasNode("UWIDVO.Verbose");
 
@@ -4555,6 +4556,10 @@ void Tracking::LoadInfoParams(cv::FileStorage& fSettings)
         node = fSettings["InfoSelector.StereoSafeKeep"];
         if (!node.empty())
             mInfoSelParams.stereoSafeKeep = ((int)node != 0);
+
+        node = fSettings["InfoSelector.Greedy"];
+        if (!node.empty())
+            mInfoSelParams.greedySelect = ((int)node != 0);
 
         node = fSettings["InfoSelector.Verbose"];
         if (!node.empty())
@@ -4624,6 +4629,7 @@ void Tracking::LoadInfoParams(cv::FileStorage& fSettings)
               << "  TopK: " << mInfoSelParams.topK << "\n"
               << "  w_uniform: " << mInfoSelParams.w_uniform << "\n"
               << "  StereoSafeKeep: " << (mInfoSelParams.stereoSafeKeep ? "YES" : "NO") << "\n"
+              << "  Greedy selector: " << (mInfoSelParams.greedySelect ? "YES" : "NO") << "\n"
               << "  InfoSelector verbose: " << (mInfoSelParams.verbose ? "YES" : "NO") << "\n"
               << "  InfoKF enabled: " << (mInfoKFParams.use ? "YES" : "NO") << "\n"
               << "  InfoKF verbose: " << (mInfoKFParams.verbose ? "YES" : "NO") << "\n"

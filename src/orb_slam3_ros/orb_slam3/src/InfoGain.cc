@@ -250,6 +250,60 @@ std::vector<int> InfoGain::SelectByInformationGain(
     std::vector<bool> selected(matches.size(), false);
     int numToSelect = std::min(params.topK, (int)matches.size());
 
+    if(!params.greedySelect)
+    {
+        struct ScoredMatch
+        {
+            double score;
+            int idx;
+        };
+
+        std::vector<ScoredMatch> scored;
+        scored.reserve(matches.size());
+
+        for(size_t i = 0; i < matches.size(); ++i)
+        {
+            MapPoint* pMP = matches[i].pMP;
+            if(!pMP || pMP->isBad())
+                continue;
+
+            Eigen::Vector3f Pw = pMP->GetWorldPos();
+            Eigen::Matrix<double,2,6> J = BuildJacobianForPoint(Pw, Tcw, fx, fy);
+            if(J.norm() < 1e-6)
+                continue;
+
+            const double delta_bits = DeltaBits(H, J, params.lambdaInit);
+            const double score = (1.0f - params.w_uniform) * delta_bits
+                               + params.w_uniform * matches[i].uniformScore;
+            scored.push_back({score, matches[i].idx});
+        }
+
+        const int nKeep = std::min(numToSelect, static_cast<int>(scored.size()));
+        if(nKeep > 0)
+        {
+            std::partial_sort(
+                scored.begin(),
+                scored.begin() + nKeep,
+                scored.end(),
+                [](const ScoredMatch& a, const ScoredMatch& b) {
+                    return a.score > b.score;
+                });
+
+            selectedIndices.reserve(nKeep);
+            for(int i = 0; i < nKeep; ++i)
+                selectedIndices.push_back(scored[i].idx);
+        }
+
+        if(params.verbose)
+        {
+            std::cout << "[InfoGain] Selected " << selectedIndices.size()
+                      << " / " << matches.size() << " features"
+                      << " (fast top-k)" << std::endl;
+        }
+
+        return selectedIndices;
+    }
+
     for(int iter = 0; iter < numToSelect; ++iter)
     {
         double maxScore = -1e9;

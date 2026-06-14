@@ -1,4 +1,4 @@
-﻿%YAML:1.0
+%YAML:1.0
 
 # Exp.5 EuRoC stereo base configuration.
 # Edit this file to change experiment parameters; the script only injects mode switches and log paths.
@@ -67,6 +67,7 @@ InfoSelector.MinPxDist: 7
 InfoSelector.LambdaInit: 1.0e-3
 InfoSelector.StereoSafeKeep: 0
 
+InfoSelector.Greedy: 0
 InfoKF.Use: 1
 InfoKF.AllowBitsDrop: 2.2
 InfoKF.LambdaMean: 1.0e-3

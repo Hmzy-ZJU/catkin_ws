@@ -33,6 +33,7 @@ struct InfoSelectParams
     double lambdaInit;
     bool stereoSafeKeep;
     bool verbose;
+    bool greedySelect;
 
     InfoSelectParams()
         : topK(400)
@@ -42,6 +43,7 @@ struct InfoSelectParams
         , lambdaInit(1.0e-3)
         , stereoSafeKeep(true)
         , verbose(true)
+        , greedySelect(true)
     {}
 };
 
