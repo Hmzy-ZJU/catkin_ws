@@ -9,12 +9,14 @@ ORB-SLAM3/UW-IDVO.
 
 import argparse
 import math
+import subprocess
 import re
 import sys
 import time
 from pathlib import Path
 
 import cv2
+import rosgraph
 import rospy
 from rosgraph_msgs.msg import Clock
 from sensor_msgs.msg import Image
@@ -153,6 +155,44 @@ def select_pairs(pairs, start, duration, max_frames):
     return selected
 
 
+def ensure_ros_master(auto_start=True, timeout=10.0):
+    if rosgraph.is_master_online():
+        return None
+    if not auto_start:
+        raise RuntimeError("ROS master is not running")
+
+    proc = subprocess.Popen(
+        ["roscore"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.STDOUT,
+    )
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if rosgraph.is_master_online():
+            print("[INFO] started temporary roscore", flush=True)
+            return proc
+        if proc.poll() is not None:
+            raise RuntimeError("temporary roscore exited before becoming available")
+        time.sleep(0.2)
+
+    proc.terminate()
+    try:
+        proc.wait(timeout=3.0)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    raise RuntimeError("timed out waiting for temporary roscore")
+
+
+def stop_ros_master(proc):
+    if proc is None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=3.0)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sequence-dir", required=True)
@@ -166,6 +206,7 @@ def main():
     parser.add_argument("--left-frame-id", default="davis_left")
     parser.add_argument("--right-frame-id", default="davis_right")
     parser.add_argument("--stats-only", action="store_true")
+    parser.add_argument("--no-auto-roscore", action="store_true")
     args = parser.parse_args()
 
     pairs = select_pairs(load_pairs(args.sequence_dir), args.start, args.duration, args.max_frames)
@@ -179,46 +220,50 @@ def main():
         print(f"span_sec={span:.6f}")
         return
 
-    rospy.init_node("aquaticvision_image_pair_publisher", anonymous=True)
-    left_pub = rospy.Publisher(args.left_topic, Image, queue_size=5)
-    right_pub = rospy.Publisher(args.right_topic, Image, queue_size=5) if args.sensor == "stereo" else None
-    clock_pub = rospy.Publisher("/clock", Clock, queue_size=10)
+    roscore_proc = ensure_ros_master(auto_start=not args.no_auto_roscore)
+    try:
+        rospy.init_node("aquaticvision_image_pair_publisher", anonymous=True)
+        left_pub = rospy.Publisher(args.left_topic, Image, queue_size=5)
+        right_pub = rospy.Publisher(args.right_topic, Image, queue_size=5) if args.sensor == "stereo" else None
+        clock_pub = rospy.Publisher("/clock", Clock, queue_size=10)
 
-    # Do not use rospy.sleep() here. Exp.3 runs with /use_sim_time=true and
-    # this node is the /clock publisher, so simulated time cannot advance until
-    # the first Clock message is published.
-    time.sleep(0.5)
-    rate_scale = args.rate if args.rate > 0 else 1.0
-    wall_prev = time.monotonic()
-    stamp_prev = pairs[0][0]
-
-    published = 0
-    for stamp, left, right in pairs:
-        if rospy.is_shutdown():
-            break
-        delay = max(0.0, (stamp - stamp_prev) / rate_scale)
-        elapsed = time.monotonic() - wall_prev
-        if delay > elapsed:
-            time.sleep(delay - elapsed)
-        ros_stamp = rospy.Time.from_sec(stamp)
-        clock_msg = Clock()
-        clock_msg.clock = ros_stamp
-        clock_pub.publish(clock_msg)
-        left_pub.publish(image_msg(left, stamp, args.left_frame_id))
-        if right_pub is not None:
-            right_pub.publish(image_msg(right, stamp, args.right_frame_id))
-        published += 1
-        stamp_prev = stamp
+        # Do not use rospy.sleep() here. Exp.3 runs with /use_sim_time=true and
+        # this node is the /clock publisher, so simulated time cannot advance until
+        # the first Clock message is published.
+        time.sleep(0.5)
+        rate_scale = args.rate if args.rate > 0 else 1.0
         wall_prev = time.monotonic()
+        stamp_prev = pairs[0][0]
 
-    if pairs:
-        clock_msg = Clock()
-        clock_msg.clock = rospy.Time.from_sec(pairs[-1][0])
-        clock_pub.publish(clock_msg)
-    print(f"published_frames={published}")
-    print(f"first_stamp={pairs[0][0]:.9f}")
-    print(f"last_stamp={pairs[-1][0]:.9f}")
-    print(f"span_sec={span:.6f}")
+        published = 0
+        for stamp, left, right in pairs:
+            if rospy.is_shutdown():
+                break
+            delay = max(0.0, (stamp - stamp_prev) / rate_scale)
+            elapsed = time.monotonic() - wall_prev
+            if delay > elapsed:
+                time.sleep(delay - elapsed)
+            ros_stamp = rospy.Time.from_sec(stamp)
+            clock_msg = Clock()
+            clock_msg.clock = ros_stamp
+            clock_pub.publish(clock_msg)
+            left_pub.publish(image_msg(left, stamp, args.left_frame_id))
+            if right_pub is not None:
+                right_pub.publish(image_msg(right, stamp, args.right_frame_id))
+            published += 1
+            stamp_prev = stamp
+            wall_prev = time.monotonic()
+
+        if pairs:
+            clock_msg = Clock()
+            clock_msg.clock = rospy.Time.from_sec(pairs[-1][0])
+            clock_pub.publish(clock_msg)
+        print(f"published_frames={published}")
+        print(f"first_stamp={pairs[0][0]:.9f}")
+        print(f"last_stamp={pairs[-1][0]:.9f}")
+        print(f"span_sec={span:.6f}")
+    finally:
+        stop_ros_master(roscore_proc)
 
 
 if __name__ == "__main__":
