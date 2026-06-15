@@ -4,8 +4,8 @@ Exp. 3 uses the complete YAML files in this directory as the source of camera,
 ORB, IDPS, and IDKD parameters.
 
 - `exp3_config.env`: experiment matrix and runtime options.
-- `aquaticvision_mono.yaml`: AquaticVision mono configuration. Current IDVO setting: `InfoSelector.TopK=120`, `InfoKF.AllowBitsDrop=1.8`.
-- `aquaticvision_stereo.yaml`: AquaticVision stereo configuration. Current IDVO setting: `InfoSelector.TopK=120`, `InfoKF.AllowBitsDrop=1.8`.
+- `aquaticvision_mono.yaml`: AquaticVision mono configuration. Current IDVO setting: `InfoSelector.TopK=115`, `InfoKF.AllowBitsDrop=2.0`.
+- `aquaticvision_stereo.yaml`: AquaticVision stereo configuration. Current IDVO setting: `InfoSelector.TopK=115`, `InfoKF.AllowBitsDrop=2.0`.
 
 `AQUATIC_SOURCE=stereo_images` is the default and publishes the exported
 AquaticVision image pairs as ROS topics. Set `AQUATIC_SOURCE=rosbag` only when
