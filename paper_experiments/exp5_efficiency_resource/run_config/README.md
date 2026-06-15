@@ -13,3 +13,8 @@ ORB, IDPS, and IDKD parameters.
 The runner only injects the current method switch (`ORB_SLAM3`, `IDPS`, `IDKD`,
 or `IDVO`) and the per-run log path. To change `kappa_top`, `alpha`, `tau0`, or
 other algorithm parameters, edit the YAML files here.
+
+Current UW-IDVO paper setting for Exp. 5:
+
+- `InfoSelector.TopK=115`
+- `InfoKF.AllowBitsDrop=2.0`
