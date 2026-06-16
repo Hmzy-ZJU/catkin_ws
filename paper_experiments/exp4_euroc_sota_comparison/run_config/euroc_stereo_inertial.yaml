@@ -85,7 +85,7 @@ InfoSelector.StereoSafeKeep: 0
 
 InfoSelector.Greedy: 0
 InfoKF.Use: 1
-InfoKF.AllowBitsDrop: 3.2
+InfoKF.AllowBitsDrop: 3.6
 InfoKF.LambdaMean: 1.0e-3
 InfoKF.Dyn.Alpha: 0.25
 InfoKF.Dyn.Beta: 0.0
