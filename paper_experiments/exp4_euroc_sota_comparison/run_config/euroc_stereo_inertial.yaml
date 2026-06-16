@@ -76,7 +76,7 @@ Viewer.imageViewScale: 1.0
 
 # UW-IDVO parameters aligned with the Harbor115 setting.
 InfoSelector.Enable: 1
-InfoSelector.TopK: 300
+InfoSelector.TopK: 350
 InfoSelector.UseUniform: 1
 InfoSelector.w_uniform: 0.12
 InfoSelector.MinPxDist: 7
@@ -85,7 +85,7 @@ InfoSelector.StereoSafeKeep: 0
 
 InfoSelector.Greedy: 0
 InfoKF.Use: 1
-InfoKF.AllowBitsDrop: 2.0
+InfoKF.AllowBitsDrop: 2.8
 InfoKF.LambdaMean: 1.0e-3
 InfoKF.Dyn.Alpha: 0.25
 InfoKF.Dyn.Beta: 0.0
