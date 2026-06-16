@@ -60,7 +60,7 @@ timeshift_cam_imu: 0.0
 
 # UW-IDVO parameters aligned with the Harbor115 setting.
 InfoSelector.Enable: 1
-InfoSelector.TopK: 200
+InfoSelector.TopK: 350
 InfoSelector.UseUniform: 1
 InfoSelector.w_uniform: 0.12
 InfoSelector.MinPxDist: 7
