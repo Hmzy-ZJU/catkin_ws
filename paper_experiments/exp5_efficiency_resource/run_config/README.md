@@ -17,6 +17,6 @@ other algorithm parameters, edit the YAML files here.
 Current UW-IDVO paper setting for Exp. 5:
 
 - AQUALOC Harbor mono and AquaticVision mono: `InfoSelector.TopK=115`, `InfoKF.AllowBitsDrop=2.0`
-- AquaticVision stereo: `InfoSelector.TopK=150`, `InfoKF.AllowBitsDrop=2.0`, `InfoKF.MaxFramesForce=120`
+- AquaticVision stereo: `InfoSelector.TopK=150`, `InfoKF.AllowBitsDrop=2.3`, `InfoKF.MaxFramesForce=120`
 - EuRoC mono: `InfoSelector.TopK=350`, `InfoKF.AllowBitsDrop=2.8`, `InfoKF.MaxFramesForce=120`
-- EuRoC stereo: `InfoSelector.TopK=220`, `InfoKF.AllowBitsDrop=5.0`, `InfoKF.MaxFramesForce=300`
+- EuRoC stereo: `InfoSelector.TopK=220`, `InfoKF.AllowBitsDrop=7.5`, `InfoKF.MaxFramesForce=300`

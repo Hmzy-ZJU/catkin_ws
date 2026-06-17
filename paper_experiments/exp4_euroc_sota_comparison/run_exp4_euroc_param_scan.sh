@@ -30,6 +30,17 @@ RUNS_PER_CASE="${RUNS_PER_CASE:-2}"
 MAX_FRAMES="${MAX_FRAMES:-0}"
 DO_BUILD="${DO_BUILD:-0}"
 
+# Optional grid-scan interface. If TOPK_LIST or DROP_LIST is set, the script
+# scans the Cartesian product of TOPK_LIST x DROP_LIST and writes FORCE to
+# InfoKF.MaxFramesForce. If neither is set, the legacy five hand-picked
+# candidates below are used.
+TOPK_LIST="${TOPK_LIST:-}"
+DROP_LIST="${DROP_LIST:-}"
+FORCE="${FORCE:-}"
+W_UNIFORM="${W_UNIFORM:-0.12}"
+CUM_THR="${CUM_THR:-0.5}"
+GREEDY="${GREEDY:-0}"
+
 mkdir -p "$SCAN_ROOT" "$SCAN_CONFIG_ROOT" "$EXP_DIR/processed_results"
 : > "$SCAN_LOG"
 
@@ -47,7 +58,7 @@ set_yaml_value() {
 }
 
 make_config_pair() {
-  local scan_id="$1" topk="$2" uniform="$3" allow_drop="$4" cum_thr="$5" greedy="$6"
+  local scan_id="$1" topk="$2" uniform="$3" allow_drop="$4" cum_thr="$5" greedy="$6" force="$7"
   local out_dir="$SCAN_CONFIG_ROOT/$scan_id"
   mkdir -p "$out_dir"
   cp "$BASE_MONO_CONFIG" "$out_dir/euroc_mono_inertial.yaml"
@@ -60,6 +71,9 @@ make_config_pair() {
     set_yaml_value "$cfg" "InfoSelector.StereoSafeKeep" "0"
     set_yaml_value "$cfg" "InfoKF.AllowBitsDrop" "$allow_drop"
     set_yaml_value "$cfg" "InfoKF.Cum.Thr" "$cum_thr"
+    if [[ -n "$force" ]]; then
+      set_yaml_value "$cfg" "InfoKF.MaxFramesForce" "$force"
+    fi
     set_yaml_value "$cfg" "UWIDVO.Verbose" "0"
     set_yaml_value "$cfg" "InfoSelector.Verbose" "0"
     set_yaml_value "$cfg" "InfoKF.Verbose" "0"
@@ -106,15 +120,15 @@ PY
 }
 
 run_one_config() {
-  local scan_id="$1" topk="$2" uniform="$3" allow_drop="$4" cum_thr="$5" greedy="$6"
+  local scan_id="$1" topk="$2" uniform="$3" allow_drop="$4" cum_thr="$5" greedy="$6" force="${7:-}"
   local run_tag="${SCAN_TAG}_${scan_id}"
   local mono_cfg="$SCAN_CONFIG_ROOT/$scan_id/euroc_mono_inertial.yaml"
   local stereo_cfg="$SCAN_CONFIG_ROOT/$scan_id/euroc_stereo_inertial.yaml"
   local summary="$EXP_DIR/processed_results/exp4_all_runs_${run_tag}.csv"
 
   log "============================================================"
-  log "[SCAN] id=$scan_id topk=$topk w_uniform=$uniform allow_bits_drop=$allow_drop cum_thr=$cum_thr greedy=$greedy"
-  make_config_pair "$scan_id" "$topk" "$uniform" "$allow_drop" "$cum_thr" "$greedy"
+  log "[SCAN] id=$scan_id topk=$topk w_uniform=$uniform allow_bits_drop=$allow_drop cum_thr=$cum_thr greedy=$greedy force=${force:-base}"
+  make_config_pair "$scan_id" "$topk" "$uniform" "$allow_drop" "$cum_thr" "$greedy" "$force"
 
   RUN_TAG="$run_tag" \
   MONO_INERTIAL_CONFIG="$mono_cfg" \
@@ -137,19 +151,36 @@ log "SENSORS=$SENSORS"
 log "UWIDVO_MODES=$UWIDVO_MODES"
 log "RUNS_PER_CASE=$RUNS_PER_CASE"
 log "MAX_FRAMES=$MAX_FRAMES"
+log "TOPK_LIST=${TOPK_LIST:-<legacy>}"
+log "DROP_LIST=${DROP_LIST:-<legacy>}"
+log "FORCE=${FORCE:-<base config>}"
 log "SCAN_SUMMARY=$SCAN_SUMMARY"
 
-# Five candidate configurations:
-#   C01: current paper setting, fastest and most aggressive point budget.
-#   C02: slightly safer point budget.
-#   C03: accuracy-oriented point budget with original IDKD threshold.
-#   C04: same point budget as C03 with more conservative keyframe insertion.
-#   C05: most accuracy-oriented candidate while keeping fast TopK selection.
-run_one_config "C01_k095_drop2p2" "95"  "0.12" "2.2" "0.5" "0"
-run_one_config "C02_k120_drop2p2" "120" "0.12" "2.2" "0.5" "0"
-run_one_config "C03_k150_drop2p2" "150" "0.12" "2.2" "0.5" "0"
-run_one_config "C04_k150_drop2p6" "150" "0.12" "2.6" "0.5" "0"
-run_one_config "C05_k180_drop2p6" "180" "0.12" "2.6" "0.5" "0"
+if [[ -n "$TOPK_LIST" || -n "$DROP_LIST" ]]; then
+  if [[ -z "$TOPK_LIST" || -z "$DROP_LIST" ]]; then
+    echo "ERROR: TOPK_LIST and DROP_LIST must be set together for grid scan." >&2
+    exit 2
+  fi
+  for topk in $TOPK_LIST; do
+    for drop in $DROP_LIST; do
+      drop_id="${drop//./p}"
+      force_id="${FORCE:-base}"
+      run_one_config "K${topk}_D${drop_id}_F${force_id}" "$topk" "$W_UNIFORM" "$drop" "$CUM_THR" "$GREEDY" "$FORCE"
+    done
+  done
+else
+  # Five legacy candidate configurations:
+  #   C01: current paper setting, fastest and most aggressive point budget.
+  #   C02: slightly safer point budget.
+  #   C03: accuracy-oriented point budget with original IDKD threshold.
+  #   C04: same point budget as C03 with more conservative keyframe insertion.
+  #   C05: most accuracy-oriented candidate while keeping fast TopK selection.
+  run_one_config "C01_k095_drop2p2" "95"  "0.12" "2.2" "0.5" "0" "$FORCE"
+  run_one_config "C02_k120_drop2p2" "120" "0.12" "2.2" "0.5" "0" "$FORCE"
+  run_one_config "C03_k150_drop2p2" "150" "0.12" "2.2" "0.5" "0" "$FORCE"
+  run_one_config "C04_k150_drop2p6" "150" "0.12" "2.6" "0.5" "0" "$FORCE"
+  run_one_config "C05_k180_drop2p6" "180" "0.12" "2.6" "0.5" "0" "$FORCE"
+fi
 
 log "============================================================"
 log "EuRoC UW-IDVO parameter scan finished"
@@ -186,4 +217,3 @@ for scan_id in sorted(groups):
         f"{mean_float('runtime_sec'):.3f}"
     )
 PY
-
