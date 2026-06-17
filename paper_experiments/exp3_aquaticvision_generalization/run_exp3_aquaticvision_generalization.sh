@@ -219,6 +219,12 @@ copy_saved_outputs() {
   done
 }
 
+perf_value() {
+  local file="$1" col="$2"
+  [ -s "$file" ] || { printf '\n'; return; }
+  awk -F, -v c="$col" 'NR==1{for(i=1;i<=NF;i++) if($i==c) idx=i; next} NR==2 && idx{print $idx; exit}' "$file"
+}
+
 run_evo_optional() {
   local gt="$1" traj="$2" evo_dir="$3"
   mkdir -p "$evo_dir"
@@ -281,21 +287,21 @@ run_case() {
   local seq_dir bag base_cfg cfg adaptive_csv launch_file tag start_time end_time elapsed exit_code traj_poses input_frames completeness status notes ate rpe gt played traj_span source_kind stats_file
   mkdir -p "$run_dir"
 
-  source_kind="$(normalize_source "$AQUATIC_SOURCE")" || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "invalid_AQUATIC_SOURCE_$AQUATIC_SOURCE"; return 0; }
-  seq_dir="$(sequence_dir "$seq")" || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "missing_sequence_dir"; return 0; }
+  source_kind="$(normalize_source "$AQUATIC_SOURCE")" || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "" "" "" "" "" "$run_dir" "invalid_AQUATIC_SOURCE_$AQUATIC_SOURCE"; return 0; }
+  seq_dir="$(sequence_dir "$seq")" || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "" "" "" "" "" "$run_dir" "missing_sequence_dir"; return 0; }
   bag=""
   if [ "$source_kind" = "rosbag" ]; then
     bag="$(bag_for_sequence "$seq_dir")"
-    [ -f "$bag" ] || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "missing_bag"; return 0; }
+    [ -f "$bag" ] || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "" "" "" "" "" "$run_dir" "missing_bag"; return 0; }
   else
     [ -x "$IMAGE_PUBLISHER" ] || chmod +x "$IMAGE_PUBLISHER" >/dev/null 2>&1 || true
-    [ -d "$seq_dir/Stereo images/l1" ] || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "missing_stereo_images_l1"; return 0; }
-    [ -d "$seq_dir/Stereo images/r1" ] || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "missing_stereo_images_r1"; return 0; }
+    [ -d "$seq_dir/Stereo images/l1" ] || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "" "" "" "" "" "$run_dir" "missing_stereo_images_l1"; return 0; }
+    [ -d "$seq_dir/Stereo images/r1" ] || { write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "" "" "" "" "" "$run_dir" "missing_stereo_images_r1"; return 0; }
   fi
 
   if [ "$sensor" = "mono" ]; then base_cfg="$AQUATIC_MONO_CONFIG"; else base_cfg="$AQUATIC_STEREO_CONFIG"; fi
   if [ ! -f "$base_cfg" ]; then
-    write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "missing_base_config"
+    write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "" "" "" "" "" "$run_dir" "missing_base_config"
     return 0
   fi
   adaptive_csv="$run_dir/adaptive_frames.csv"
@@ -310,7 +316,7 @@ run_case() {
   stats_file="$run_dir/input_source_stats.txt"
   if [ "$source_kind" = "stereo_images" ]; then
     if ! image_source_stats "$seq_dir" "$sensor" "$stats_file"; then
-      write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "$run_dir" "image_source_stats_failed"
+      write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "" "" "" "" "" "$run_dir" "image_source_stats_failed"
       return 0
     fi
   fi
@@ -391,11 +397,18 @@ PY
     status="PASS_WITH_PLAY_EXIT_${exit_code}"; notes="rosbag_play_exit_${exit_code}"
   fi
 
-  write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "$status" "$ate" "$rpe" "$completeness" "$traj_poses" "$input_frames" "$elapsed" "$run_dir" "$notes"
+  write_row "exp3" "AquaticVision" "$seq" "$sensor" "$mode" "$run_id" "$status" "$ate" "$rpe" "$completeness" "$traj_poses" "$input_frames" \
+    "$(perf_value "$run_dir/runtime_perf.csv" track_ms_mean)" \
+    "$(perf_value "$run_dir/runtime_perf.csv" ba_ms_mean)" \
+    "$(perf_value "$run_dir/runtime_perf.csv" sel_pts_mean)" \
+    "$(perf_value "$run_dir/runtime_perf.csv" num_kfs)" \
+    "$(perf_value "$run_dir/runtime_perf.csv" num_mps)" \
+    "$(perf_value "$run_dir/runtime_perf.csv" mem_mb)" \
+    "$elapsed" "$run_dir" "$notes"
 }
 
 main() {
-  printf 'experiment_id,dataset,sequence,sensor,method,run_id,status,ate_rmse_m,rpe_rmse_m,completeness_percent,trajectory_poses,input_frames,runtime_sec,result_dir,notes\n' > "$SUMMARY"
+  printf 'experiment_id,dataset,sequence,sensor,method,run_id,status,ate_rmse_m,rpe_rmse_m,completeness_percent,trajectory_poses,input_frames,tracking_time_ms_mean,local_ba_time_ms_mean,selected_points_mean,keyframes_final,map_points_final,memory_mb,runtime_sec,result_dir,notes\n' > "$SUMMARY"
   log "Exp.3 AquaticVision ROS-online generalization started"
   log "WS=$WS"
   log "AQUATIC_ROOT=$AQUATIC_ROOT"
