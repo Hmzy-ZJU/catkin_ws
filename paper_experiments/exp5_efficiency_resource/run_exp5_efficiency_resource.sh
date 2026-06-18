@@ -40,6 +40,13 @@ write_row() {
   printf '\n' >> "$SUMMARY"
 }
 
+write_skip_row() {
+  local dataset="$1" seq="$2" sensor="$3" mode="$4" run_id="$5" status="$6" bag="$7" run_dir="$8" notes="$9"
+  write_row "exp5" "$dataset" "$seq" "$sensor" "$mode" "$run_id" "$status" \
+    "" "" "" "" "" "" "" "" "" "" "" "" \
+    "$bag" "$run_dir" "$notes"
+}
+
 normalize_mode() {
   local upper
   upper="$(printf '%s' "$1" | tr '[:lower:]-' '[:upper:]_')"
@@ -66,6 +73,72 @@ count_lines() {
   local file="$1"
   [ -f "$file" ] || { printf '0\n'; return; }
   awk 'NF && $1 !~ /^#/ { c++ } END { print c+0 }' "$file"
+}
+
+trajectory_span_sec() {
+  local file="$1"
+  [ -s "$file" ] || { printf '0.000\n'; return; }
+  python3 - "$file" <<'PY'
+import math
+import sys
+
+times = []
+with open(sys.argv[1]) as f:
+    for line in f:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        try:
+            t = float(parts[0])
+            if abs(t) > 1e12:
+                t *= 1e-9
+            if math.isfinite(t):
+                times.append(t)
+        except Exception:
+            pass
+
+if len(times) < 2:
+    print("0.000")
+else:
+    print(f"{max(times) - min(times):.6f}")
+PY
+}
+
+played_duration_sec() {
+  local bag="$1"
+  python3 - "$bag" "$BAG_START" "$BAG_DURATION" <<'PY'
+import sys
+import rosbag
+
+bag_path, start_s, duration_s = sys.argv[1], float(sys.argv[2]), float(sys.argv[3])
+with rosbag.Bag(bag_path) as bag:
+    total = max(0.0, bag.get_end_time() - bag.get_start_time())
+remaining = max(0.0, total - max(0.0, start_s))
+played = remaining if duration_s <= 0 else min(duration_s, remaining)
+print(f"{played:.6f}")
+PY
+}
+
+count_bag_topic_messages() {
+  local bag="$1" topic="$2"
+  python3 - "$bag" "$topic" "$BAG_START" "$BAG_DURATION" <<'PY'
+import sys
+import rosbag
+
+bag_path, topic, start_s, duration_s = sys.argv[1], sys.argv[2], float(sys.argv[3]), float(sys.argv[4])
+with rosbag.Bag(bag_path) as bag:
+    begin = bag.get_start_time() + max(0.0, start_s)
+    end = bag.get_end_time() if duration_s <= 0 else min(bag.get_end_time(), begin + duration_s)
+    n = 0
+    for _, _, t in bag.read_messages(topics=[topic]):
+        ts = t.to_sec()
+        if begin <= ts <= end:
+            n += 1
+print(n)
+PY
 }
 
 apply_mode_to_config() {
@@ -112,6 +185,27 @@ bag_for_case() {
       if [ -z "$seq_dir" ] && [ -d "$AQUATIC_ROOT/data/$seq" ]; then seq_dir="$AQUATIC_ROOT/data/$seq"; fi
       if [ -z "$seq_dir" ]; then return 1; fi
       find "$seq_dir/data rosbag" -maxdepth 1 -type f -name '*200hz_images_20hz.bag' | sort | head -1
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+gt_for_case() {
+  local dataset="$1" seq="$2" seq_num seq_dir
+  case "$dataset" in
+    harbor)
+      seq_num="$(printf '%s' "$seq" | sed -n 's/^harbor_sequence_\([0-9][0-9]*\)$/\1/p')"
+      [ -n "$seq_num" ] || return 1
+      printf '%s/GT/harbor_colmap_traj_sequence_%02d.txt\n' "$HARBOR_ROOT" "$seq_num"
+      ;;
+    euroc)
+      printf '%s/GT/%s.csv\n' "$EUROC_ROOT" "$seq"
+      ;;
+    aquaticvision)
+      seq_dir="$(find "$AQUATIC_ROOT/data" -maxdepth 1 -type d -name "${seq}_*" | sort | head -1)"
+      if [ -z "$seq_dir" ] && [ -d "$AQUATIC_ROOT/data/$seq" ]; then seq_dir="$AQUATIC_ROOT/data/$seq"; fi
+      [ -n "$seq_dir" ] || return 1
+      printf '%s/groundtruth/gt.tum\n' "$seq_dir"
       ;;
     *) return 1 ;;
   esac
@@ -217,24 +311,151 @@ perf_value() {
   awk -F, -v c="$col" 'NR==1{for(i=1;i<=NF;i++) if($i==c) idx=i; next} NR==2 && idx{print $idx; exit}' "$file"
 }
 
+extract_metric() {
+  local file="$1"
+  [ -f "$file" ] || { printf '\n'; return; }
+  awk '/rmse/ {print $2; exit}' "$file"
+}
+
+normalize_timestamps_to_sec() {
+  local src="$1" dst="$2"
+  [ -s "$src" ] || return 1
+  awk '{if(NF>=8){t=$1; if(t>1000000000000 || t<-1000000000000){t=t/1000000000}; printf "%.9f %s %s %s %s %s %s %s\n",t,$2,$3,$4,$5,$6,$7,$8}}' "$src" > "$dst"
+  [ -s "$dst" ]
+}
+
+run_evo_optional() {
+  local dataset="$1" sensor="$2" gt="$3" traj="$4" evo_dir="$5"
+  mkdir -p "$evo_dir"
+  if [ ! -s "$gt" ] || [ ! -s "$traj" ]; then
+    echo "EVO_SKIP missing gt or trajectory" > "$evo_dir/evo_status.txt"
+    return 0
+  fi
+  if ! command -v evo_ape >/dev/null 2>&1 || ! command -v evo_rpe >/dev/null 2>&1; then
+    echo "EVO_SKIP evo tools not found" > "$evo_dir/evo_status.txt"
+    return 0
+  fi
+
+  export MPLBACKEND=Agg
+  echo "EVO_RUNNING" > "$evo_dir/evo_status.txt"
+
+  local traj_eval="$traj" format="tum" scale_args=()
+  case "$dataset" in
+    euroc)
+      traj_eval="$evo_dir/trajectory_sec.txt"
+      normalize_timestamps_to_sec "$traj" "$traj_eval" || {
+        echo "EVO_SKIP trajectory timestamp conversion failed" >> "$evo_dir/evo_status.txt"
+        return 0
+      }
+      format="euroc"
+      if [ "$sensor" = "mono" ]; then scale_args=(-s); else scale_args=(); fi
+      ;;
+    harbor|aquaticvision)
+      local traj_sec="$evo_dir/trajectory_sec.tum"
+      local gt_eval="$evo_dir/groundtruth_matched.tum"
+      local traj_matched="$evo_dir/estimated_matched.tum"
+      normalize_timestamps_to_sec "$traj" "$traj_sec" || {
+        echo "EVO_SKIP trajectory timestamp conversion failed" >> "$evo_dir/evo_status.txt"
+        return 0
+      }
+      python3 - "$gt" "$traj_sec" "$gt_eval" "$traj_matched" <<'PY' > "$evo_dir/match_timestamps_stdout.txt" 2>&1
+import bisect
+import sys
+
+gt_in, est_in, gt_out, est_out = sys.argv[1:5]
+
+def read_tum(path):
+    rows = []
+    for line in open(path):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        p = line.replace(",", " ").split()
+        if len(p) < 8:
+            continue
+        try:
+            t = float(p[0])
+            if abs(t) > 1e12:
+                t *= 1e-9
+            rows.append((t, p))
+        except Exception:
+            pass
+    return rows
+
+gt = read_tum(gt_in)
+est = read_tum(est_in)
+if len(gt) < 3 or len(est) < 3:
+    raise SystemExit("not enough poses")
+
+gt.sort(key=lambda x: x[0])
+est.sort(key=lambda x: x[0])
+gt_times = [r[0] for r in gt]
+offset = gt_times[0] - est[0][0]
+max_dt = 0.05
+matches = []
+for et, ep in est:
+    target = et + offset
+    j = bisect.bisect_left(gt_times, target)
+    cand = []
+    if j < len(gt):
+        cand.append(j)
+    if j > 0:
+        cand.append(j - 1)
+    if not cand:
+        continue
+    best = min(cand, key=lambda i: abs(gt_times[i] - target))
+    if abs(gt_times[best] - target) <= max_dt:
+        matches.append((et, gt[best][1], ep))
+
+if len(matches) < 3:
+    raise SystemExit(f"not enough matches {len(matches)}")
+
+with open(gt_out, "w") as fg, open(est_out, "w") as fe:
+    for stamp, g, e in matches:
+        fg.write(" ".join([f"{stamp:.9f}"] + g[1:8]) + "\n")
+        fe.write(" ".join([f"{stamp:.9f}"] + e[1:8]) + "\n")
+
+print(f"matches={len(matches)}")
+print(f"offset={offset:.9f}")
+PY
+      if [ ! -s "$gt_eval" ] || [ ! -s "$traj_matched" ]; then
+        echo "EVO_SKIP timestamp matching failed" >> "$evo_dir/evo_status.txt"
+        return 0
+      fi
+      format="tum"
+      gt="$gt_eval"
+      traj_eval="$traj_matched"
+      scale_args=(-s)
+      ;;
+    *)
+      echo "EVO_SKIP unsupported dataset" >> "$evo_dir/evo_status.txt"
+      return 0
+      ;;
+  esac
+
+  timeout --preserve-status "$EVO_TIMEOUT" evo_ape "$format" "$gt" "$traj_eval" -a "${scale_args[@]}" --t_max_diff 0.05 --no_warnings > "$evo_dir/evo_ape.txt" 2>&1 || echo "evo_ape failed or timed out" >> "$evo_dir/evo_status.txt"
+  timeout --preserve-status "$EVO_TIMEOUT" evo_rpe "$format" "$gt" "$traj_eval" -a "${scale_args[@]}" --t_max_diff 0.05 --no_warnings > "$evo_dir/evo_rpe.txt" 2>&1 || echo "evo_rpe failed or timed out" >> "$evo_dir/evo_status.txt"
+  echo "EVO_DONE" >> "$evo_dir/evo_status.txt"
+}
+
 run_case() {
   local dataset="$1" seq="$2" sensor="$3" mode="$4" run_id="$5"
   local run_dir="$RESULT_ROOT/$dataset/$seq/$sensor/$mode/run_${run_id}"
-  local bag base_cfg cfg adaptive_csv topics left_topic right_topic imu_topic node_type launch_file tag start_time end_time elapsed status notes exit_code traj_poses
+  local bag base_cfg cfg adaptive_csv topics left_topic right_topic imu_topic node_type launch_file tag start_time end_time elapsed status notes exit_code traj_poses input_frames played traj_span completeness gt ate rpe
   mkdir -p "$run_dir"
 
   if [ "$dataset" = "harbor" ] && [ "$sensor" = "stereo" ]; then
-    write_row "exp5" "$dataset" "$seq" "$sensor" "$mode" "$run_id" "UNSUPPORTED" "" "" "" "" "" "" "" "" "$run_dir" "harbor_has_single_camera"
+    write_skip_row "$dataset" "$seq" "$sensor" "$mode" "$run_id" "UNSUPPORTED" "" "$run_dir" "harbor_has_single_camera"
     return 0
   fi
 
   if ! bag="$(bag_for_case "$dataset" "$seq")" || [ ! -f "$bag" ]; then
-    write_row "exp5" "$dataset" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "" "$run_dir" "missing_bag"
+    write_skip_row "$dataset" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "$run_dir" "missing_bag"
     return 0
   fi
 
   if ! base_cfg="$(base_config_for_case "$dataset" "$sensor" "$run_dir" "$seq")" || [ ! -f "$base_cfg" ]; then
-    write_row "exp5" "$dataset" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "" "" "" "" "" "" "" "$bag" "$run_dir" "missing_base_config"
+    write_skip_row "$dataset" "$seq" "$sensor" "$mode" "$run_id" "SKIP" "$bag" "$run_dir" "missing_base_config"
     return 0
   fi
 
@@ -243,7 +464,7 @@ run_case() {
   apply_mode_to_config "$base_cfg" "$cfg" "$mode" "$adaptive_csv"
 
   topics="$(topics_for_case "$dataset" "$sensor")" || {
-    write_row "exp5" "$dataset" "$seq" "$sensor" "$mode" "$run_id" "UNSUPPORTED" "" "" "" "" "" "" "" "$bag" "$run_dir" "unsupported_topics"
+    write_skip_row "$dataset" "$seq" "$sensor" "$mode" "$run_id" "UNSUPPORTED" "$bag" "$run_dir" "unsupported_topics"
     return 0
   }
   IFS='|' read -r left_topic right_topic imu_topic <<< "$topics"
@@ -278,6 +499,26 @@ run_case() {
 
   copy_saved_outputs "$tag" "$run_dir"
   traj_poses="$(count_lines "$run_dir/trajectory.txt")"
+  input_frames="$(count_bag_topic_messages "$bag" "$left_topic")"
+  played="$(played_duration_sec "$bag")"
+  traj_span="$(trajectory_span_sec "$run_dir/trajectory.txt")"
+  completeness="$(python3 - "$traj_span" "$played" <<'PY'
+import sys
+span=float(sys.argv[1]); played=max(1e-9, float(sys.argv[2]))
+print(f"{max(0.0, min(100.0, 100.0*span/played)):.3f}")
+PY
+)"
+  ate=""
+  rpe=""
+  if gt="$(gt_for_case "$dataset" "$seq")" && [ -s "$gt" ]; then
+    run_evo_optional "$dataset" "$sensor" "$gt" "$run_dir/trajectory.txt" "$run_dir/evo"
+    ate="$(extract_metric "$run_dir/evo/evo_ape.txt")"
+    rpe="$(extract_metric "$run_dir/evo/evo_rpe.txt")"
+  else
+    mkdir -p "$run_dir/evo"
+    echo "EVO_SKIP missing groundtruth" > "$run_dir/evo/evo_status.txt"
+  fi
+
   status="PASS"
   notes="ok"
   if [ "$traj_poses" -lt "$MIN_TRAJECTORY_POSES" ]; then
@@ -288,7 +529,7 @@ run_case() {
     notes="rosbag_play_exit_${exit_code}"
   fi
 
-  write_row "exp5" "$dataset" "$seq" "$sensor" "$mode" "$run_id" "$status" \
+  write_row "exp5" "$dataset" "$seq" "$sensor" "$mode" "$run_id" "$status" "$ate" "$rpe" "$completeness" "$traj_poses" "$input_frames" \
     "$(perf_value "$run_dir/runtime_perf.csv" track_ms_mean)" \
     "$(perf_value "$run_dir/runtime_perf.csv" ba_ms_mean)" \
     "$(perf_value "$run_dir/runtime_perf.csv" sel_pts_mean)" \
@@ -299,7 +540,7 @@ run_case() {
 }
 
 main() {
-  printf 'experiment_id,dataset,sequence,sensor,method,run_id,status,tracking_time_ms_mean,local_ba_time_ms_mean,selected_points_mean,keyframes_final,map_points_final,memory_mb,runtime_sec,bag,result_dir,notes\n' > "$SUMMARY"
+  printf 'experiment_id,dataset,sequence,sensor,method,run_id,status,ate_rmse_m,rpe_rmse_m,completeness_percent,trajectory_poses,input_frames,tracking_time_ms_mean,local_ba_time_ms_mean,selected_points_mean,keyframes_final,map_points_final,memory_mb,runtime_sec,bag,result_dir,notes\n' > "$SUMMARY"
   log "Exp.5 efficiency/resource started"
   log "WS=$WS"
   log "RUN_TAG=$RUN_TAG"
