@@ -40,7 +40,7 @@ Viewer.ViewpointF: 500.0
 
 # UW-IDVO Exp.3 lightweight generalization parameters.
 InfoSelector.Enable: 1
-InfoSelector.TopK: 150
+InfoSelector.TopK: 180
 InfoSelector.UseUniform: 1
 InfoSelector.w_uniform: 0.12
 InfoSelector.MinPxDist: 7
@@ -49,7 +49,7 @@ InfoSelector.StereoSafeKeep: 0
 
 InfoSelector.Greedy: 0
 InfoKF.Use: 1
-InfoKF.AllowBitsDrop: 2.3
+InfoKF.AllowBitsDrop: 3.0
 InfoKF.LambdaMean: 1.0e-3
 InfoKF.Dyn.Alpha: 0.25
 InfoKF.Dyn.Beta: 0.0
@@ -57,7 +57,7 @@ InfoKF.Dyn.TauMin: 0.1
 InfoKF.Dyn.TauMax: 5.0
 InfoKF.Cum.Decay: 0.95
 InfoKF.Cum.Thr: 0.5
-InfoKF.MaxFramesForce: 120
+InfoKF.MaxFramesForce: 300
 
 EnableAdaptiveIDVO: 0
 AdaptivePolicyType: "Fixed"
