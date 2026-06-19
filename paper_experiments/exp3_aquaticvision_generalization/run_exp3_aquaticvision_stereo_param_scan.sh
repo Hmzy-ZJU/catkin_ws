@@ -20,7 +20,7 @@ DO_BUILD="${DO_BUILD:-0}"
 UWIDVO_MODES="${UWIDVO_MODES:-ORB_SLAM3,IDVO}"
 MIN_COMPLETENESS_PERCENT="${MIN_COMPLETENESS_PERCENT:-50}"
 
-# Format: scan_id:topk:drop:force
+# Format: scan_id:topk:drop:force[:cum_thr]
 # Keep the first row as the current reference setting.
 SCAN_CONFIGS="${SCAN_CONFIGS:-A01_k115_d2p0_f120:115:2.0:120 A02_k115_d2p8_f300:115:2.8:300 A03_k115_d3p2_f300:115:3.2:300 A04_k100_d2p8_f300:100:2.8:300 A05_k150_d3p2_f300:150:3.2:300}"
 
@@ -30,16 +30,22 @@ COMBINED="$EXP_DIR/processed_results/${SCAN_TAG}_all_runs_with_efficiency.csv"
 mkdir -p "$CONFIG_ROOT" "$EXP_DIR/processed_results"
 
 make_config() {
-  local topk="$1" drop="$2" force="$3" out="$4"
-  awk -v topk="$topk" -v drop="$drop" -v force="$force" '
+  local topk="$1" drop="$2" force="$3" cum_thr="$4" out="$5"
+  awk -v topk="$topk" -v drop="$drop" -v force="$force" -v cum_thr="$cum_thr" '
     /^[[:space:]]*InfoSelector\.TopK[[:space:]]*:/ { print "InfoSelector.TopK: " topk; next }
     /^[[:space:]]*InfoKF\.AllowBitsDrop[[:space:]]*:/ { print "InfoKF.AllowBitsDrop: " drop; next }
     /^[[:space:]]*InfoKF\.MaxFramesForce[[:space:]]*:/ { print "InfoKF.MaxFramesForce: " force; next }
+    /^[[:space:]]*InfoKF\.Cum\.Thr[[:space:]]*:/ {
+      if (cum_thr != "") {
+        print "InfoKF.Cum.Thr: " cum_thr
+        next
+      }
+    }
     { print }
   ' "$BASE_STEREO_CONFIG" > "$out"
 }
 
-printf 'scan_id,topk,drop,force,experiment_id,dataset,sequence,sensor,method,run_id,status,ate_rmse_m,rpe_rmse_m,completeness_percent,trajectory_poses,input_frames,runtime_sec,selected_points_mean,selection_ratio_mean,keyframes_final,map_points_final,tracking_time_ms_mean,local_ba_time_ms_mean,result_dir,notes\n' > "$COMBINED"
+printf 'scan_id,topk,drop,force,cum_thr,experiment_id,dataset,sequence,sensor,method,run_id,status,ate_rmse_m,rpe_rmse_m,completeness_percent,trajectory_poses,input_frames,runtime_sec,selected_points_mean,selection_ratio_mean,keyframes_final,map_points_final,tracking_time_ms_mean,local_ba_time_ms_mean,result_dir,notes\n' > "$COMBINED"
 
 echo "[INFO] Exp.3 AquaticVision stereo parameter scan"
 echo "[INFO] SCAN_TAG=$SCAN_TAG"
@@ -50,17 +56,22 @@ echo "[INFO] BAG_DURATION=$BAG_DURATION"
 echo "[INFO] UWIDVO_MODES=$UWIDVO_MODES"
 
 for spec in $SCAN_CONFIGS; do
-  IFS=':' read -r scan_id topk drop force <<< "$spec"
+  IFS=':' read -r scan_id topk drop force cum_thr <<< "$spec"
   if [ -z "${scan_id:-}" ] || [ -z "${topk:-}" ] || [ -z "${drop:-}" ] || [ -z "${force:-}" ]; then
     echo "[WARN] Invalid scan spec: $spec" >&2
     continue
   fi
+  cum_thr="${cum_thr:-}"
 
   cfg="$CONFIG_ROOT/aquaticvision_stereo_${scan_id}.yaml"
   run_tag="${SCAN_TAG}_${scan_id}"
-  make_config "$topk" "$drop" "$force" "$cfg"
+  make_config "$topk" "$drop" "$force" "$cum_thr" "$cfg"
 
-  echo "[INFO] Running $scan_id: TopK=$topk Drop=$drop Force=$force"
+  if [ -n "$cum_thr" ]; then
+    echo "[INFO] Running $scan_id: TopK=$topk Drop=$drop Force=$force CumThr=$cum_thr"
+  else
+    echo "[INFO] Running $scan_id: TopK=$topk Drop=$drop Force=$force"
+  fi
   RUN_TAG="$run_tag" \
     AQUATIC_ROOT="$AQUATIC_ROOT" \
     AQUATIC_STEREO_CONFIG="$cfg" \
@@ -80,13 +91,13 @@ for spec in $SCAN_CONFIGS; do
     continue
   fi
 
-  python3 - "$summary" "$COMBINED" "$scan_id" "$topk" "$drop" "$force" <<'PY'
+  python3 - "$summary" "$COMBINED" "$scan_id" "$topk" "$drop" "$force" "$cum_thr" <<'PY'
 import csv
 import os
 import statistics
 import sys
 
-summary, combined, scan_id, topk, drop, force = sys.argv[1:7]
+summary, combined, scan_id, topk, drop, force, cum_thr = sys.argv[1:8]
 
 def read_efficiency(run_dir):
     path = os.path.join(run_dir, "adaptive_frames.csv")
@@ -140,7 +151,7 @@ with open(summary, newline="", encoding="utf-8") as fp:
     rows = list(csv.DictReader(fp))
 
 fieldnames = [
-    "scan_id", "topk", "drop", "force",
+    "scan_id", "topk", "drop", "force", "cum_thr",
     "experiment_id", "dataset", "sequence", "sensor", "method", "run_id", "status",
     "ate_rmse_m", "rpe_rmse_m", "completeness_percent", "trajectory_poses", "input_frames",
     "runtime_sec", "selected_points_mean", "selection_ratio_mean", "keyframes_final",
@@ -156,6 +167,7 @@ with open(combined, "a", newline="", encoding="utf-8") as fp:
             "topk": topk,
             "drop": drop,
             "force": force,
+            "cum_thr": cum_thr,
             "experiment_id": row.get("experiment_id", ""),
             "dataset": row.get("dataset", ""),
             "sequence": row.get("sequence", ""),
