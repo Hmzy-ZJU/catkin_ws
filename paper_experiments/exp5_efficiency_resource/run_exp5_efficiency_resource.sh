@@ -331,7 +331,7 @@ run_evo_optional() {
     echo "EVO_SKIP missing gt or trajectory" > "$evo_dir/evo_status.txt"
     return 0
   fi
-  if ! command -v evo_ape >/dev/null 2>&1 || ! command -v evo_rpe >/dev/null 2>&1; then
+  if ! command -v evo_ape >/dev/null 2>&1 || ! command -v evo_rpe >/dev/null 2>&1 || ! command -v evo_traj >/dev/null 2>&1; then
     echo "EVO_SKIP evo tools not found" > "$evo_dir/evo_status.txt"
     return 0
   fi
@@ -433,8 +433,11 @@ PY
       ;;
   esac
 
-  timeout --preserve-status "$EVO_TIMEOUT" evo_ape "$format" "$gt" "$traj_eval" -a "${scale_args[@]}" --t_max_diff 0.05 --no_warnings > "$evo_dir/evo_ape.txt" 2>&1 || echo "evo_ape failed or timed out" >> "$evo_dir/evo_status.txt"
-  timeout --preserve-status "$EVO_TIMEOUT" evo_rpe "$format" "$gt" "$traj_eval" -a "${scale_args[@]}" --t_max_diff 0.05 --no_warnings > "$evo_dir/evo_rpe.txt" 2>&1 || echo "evo_rpe failed or timed out" >> "$evo_dir/evo_status.txt"
+  timeout --preserve-status "$EVO_TIMEOUT" evo_ape "$format" "$gt" "$traj_eval" -a "${scale_args[@]}" --t_max_diff 0.05 -v --save_results "$evo_dir/evo_ape.zip" --save_plot "$evo_dir/evo_ape_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_ape.txt" 2>&1 || echo "evo_ape failed or timed out" >> "$evo_dir/evo_status.txt"
+  timeout --preserve-status "$EVO_TIMEOUT" evo_rpe "$format" "$gt" "$traj_eval" -a "${scale_args[@]}" --t_max_diff 0.05 -v -r trans_part -d 1 -u f --save_results "$evo_dir/evo_rpe.zip" --save_plot "$evo_dir/evo_rpe_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_rpe.txt" 2>&1 || echo "evo_rpe failed or timed out" >> "$evo_dir/evo_status.txt"
+  local traj_scale_args=()
+  if [ "${#scale_args[@]}" -gt 0 ]; then traj_scale_args=(--correct_scale); fi
+  timeout --preserve-status "$EVO_TIMEOUT" evo_traj "$format" "$traj_eval" --ref "$gt" --align "${traj_scale_args[@]}" --save_plot "$evo_dir/evo_traj_plot_xy.pdf" --plot_mode xy --no_warnings > "$evo_dir/evo_traj.txt" 2>&1 || echo "evo_traj failed or timed out" >> "$evo_dir/evo_status.txt"
   echo "EVO_DONE" >> "$evo_dir/evo_status.txt"
 }
 
@@ -571,6 +574,9 @@ main() {
   log "Exp.5 finished"
   log "Summary: $SUMMARY"
   log "Raw results: $RESULT_ROOT"
+  find "$RESULT_ROOT" -type f \( -name "evo_ape_plot_xy.pdf" -o -name "evo_rpe_plot_xy.pdf" -o -name "evo_traj_plot_xy.pdf" \) | sort > "$RESULT_ROOT/evo_plots.txt"
+  log "Evo plot list: $RESULT_ROOT/evo_plots.txt"
+  log "Evo plot count: $(wc -l < "$RESULT_ROOT/evo_plots.txt" 2>/dev/null || echo 0)"
 }
 
 main "$@"
